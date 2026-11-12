@@ -64,6 +64,39 @@
           </DataGrid.Columns>
         </DataGrid>
 
+        <DockPanel Margin="0,14,0,3">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <Button Style="{StaticResource LinkButton}" Command="{Binding OpenMapCommand}" Content="Show map" Margin="0,0,12,0" />
+            <Button Style="{StaticResource LinkButton}" Command="{Binding AddRelationshipCommand}" Content="+ Add relationship" />
+          </StackPanel>
+          <TextBlock Style="{StaticResource FormLabel}" Margin="0" Text="Relationships" />
+        </DockPanel>
+        <DataGrid ItemsSource="{Binding Entity.Relationships}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" AutomationProperties.Name="Relationships"
+                  GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource DividerBrush}" BorderBrush="{DynamicResource BorderBrush}" RowHeight="30" MinHeight="40">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="Related to" Width="180">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ComboBox ItemsSource="{Binding DataContext.OtherEntities, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            SelectedValue="{Binding TargetId, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Id" DisplayMemberPath="Name" BorderThickness="0" MinHeight="26" Padding="4,0" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Relationship (e.g. sister of, rival of)" Binding="{Binding Label, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+            <DataGridTemplateColumn Width="30">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Button Style="{StaticResource ToolButton}" Padding="2" ToolTip="Remove relationship" CommandParameter="{Binding}"
+                          Command="{Binding DataContext.RemoveRelationshipCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" FontSize="11" Foreground="{DynamicResource ErrorBrush}" />
+                  </Button>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Text="{Binding IncomingRelationships}" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" />
+
         <TextBlock Style="{StaticResource FormLabel}" Text="Notes" />
         <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Entity.Notes, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="Backstory, research, anything else" VerticalContentAlignment="Top"
                  TextWrapping="Wrap" AcceptsReturn="True" MinHeight="160" VerticalScrollBarVisibility="Auto" FontFamily="Cambria" FontSize="14" />

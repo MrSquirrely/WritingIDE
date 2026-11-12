@@ -144,13 +144,19 @@
       <Setter.Value>
         <ControlTemplate TargetType="TabControl">
           <DockPanel>
-            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="0,0,0,2" Background="{DynamicResource ChromeBrush}">
+            <Border x:Name="TabStrip" DockPanel.Dock="Top" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="0,0,0,2" Background="{DynamicResource ChromeBrush}">
               <WrapPanel IsItemsHost="True" />
             </Border>
             <Border Background="{DynamicResource SurfaceBrush}">
               <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
             </Border>
           </DockPanel>
+          <ControlTemplate.Triggers>
+            <!-- Distraction-free mode hides the tabs -->
+            <Trigger Property="Tag" Value="Focus">
+              <Setter TargetName="TabStrip" Property="Visibility" Value="Collapsed" />
+            </Trigger>
+          </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
     </Setter>

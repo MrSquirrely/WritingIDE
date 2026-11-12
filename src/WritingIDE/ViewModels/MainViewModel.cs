@@ -20,6 +20,7 @@ using WritingIDE.Core.Model;
 using WritingIDE.Core.Persistence;
 using WritingIDE.Core.Search;
 using WritingIDE.Core.Text;
+using WritingIDE.Editor;
 using WritingIDE.Infrastructure;
 using WritingIDE.Plugins;
 using WritingIDE.Services;
@@ -39,6 +40,9 @@ public sealed class MainViewModel : ObservableObject {
     private readonly WindowsSpellingProvider _spelling = new();
     private readonly Dictionary<Guid, List<ErrorItem>> _diagnostics = new();
     private readonly Dictionary<Guid, int> _wordCounts = new();
+
+    /// <summary>Per chapter: how often each story element is mentioned (from the latest analysis). Feeds the name lenses.</summary>
+    private readonly Dictionary<Guid, Dictionary<Guid, int>> _mentionCounts = new();
     private readonly DispatcherTimer _optionsRefreshTimer;
     private readonly StringBuilder _output = new();
     private GrammarOptions? _grammarOptions;
@@ -89,6 +93,14 @@ public sealed class MainViewModel : ObservableObject {
         SetThemeCommand = new RelayCommand(parameter => Theme = AppTheme.Parse(parameter as string));
         FindInFilesCommand = new RelayCommand(() => ShowFindAndReplace(replace: false), () => HasProject);
         ReplaceInFilesCommand = new RelayCommand(() => ShowFindAndReplace(replace: true), () => HasProject);
+        ToggleDistractionFreeCommand = new RelayCommand(() => IsDistractionFree = !IsDistractionFree, () => IsDistractionFree || (ActiveChapter is not null));
+        ExitDistractionFreeCommand = new RelayCommand(() => IsDistractionFree = false);
+        TakeSnapshotCommand = new RelayCommand(() => ActiveChapter?.TakeSnapshot(null), () => ActiveChapter is not null);
+        AddCommentCommand = new RelayCommand(() => ActiveChapter?.AddCommentCommand.Execute(null), () => ActiveChapter is not null);
+        ListCommentsCommand = new RelayCommand(ListComments, () => HasProject);
+        OpenCharacterStatisticsCommand = new RelayCommand(() => OpenToolDocument(() => new CharacterStatisticsDocumentViewModel(this)), () => HasProject);
+        OpenTimelineCommand = new RelayCommand(() => OpenToolDocument(() => new TimelineDocumentViewModel(this)), () => HasProject);
+        OpenRelationshipMapCommand = new RelayCommand(() => OpenToolDocument(() => new RelationshipMapDocumentViewModel(this)), () => HasProject);
         AppTheme.Changed += () => {
             OnPropertyChanged(nameof(Theme));
             OnPropertyChanged(nameof(IsSystemTheme));
@@ -141,6 +153,126 @@ public sealed class MainViewModel : ObservableObject {
     private FindReplaceDialog? _findDialog;
 
     // =====================================================================
+    // Writing tools: focus mode, comments, snapshots, lenses, statistics, timeline, map
+    // =====================================================================
+
+    public ICommand ToggleDistractionFreeCommand { get; }
+
+    public ICommand ExitDistractionFreeCommand { get; }
+
+    public ICommand TakeSnapshotCommand { get; }
+
+    public ICommand AddCommentCommand { get; }
+
+    public ICommand ListCommentsCommand { get; }
+
+    public ICommand OpenCharacterStatisticsCommand { get; }
+
+    public ICommand OpenTimelineCommand { get; }
+
+    public ICommand OpenRelationshipMapCommand { get; }
+
+    /// <summary>View > Distraction-Free Writing (F11): full screen, only the chapter text.</summary>
+    public bool IsDistractionFree {
+        get;
+        set {
+            if (value && (ActiveChapter is null)) {
+                Notify("Open a chapter first: distraction-free mode is for writing.", NotificationKind.Warning);
+                return;
+            }
+            if (SetProperty(ref field, value)) {
+                ApplyViewOptions();
+                StatusText = value ? "Distraction-free writing. Press Esc or F11 to return." : "Ready";
+            }
+        }
+    }
+
+    /// <summary>View > Name Lenses.</summary>
+    public bool ShowNameLenses {
+        get => Settings.ShowNameLenses;
+        set {
+            Settings.ShowNameLenses = value;
+            Settings.Save();
+            OnPropertyChanged();
+            ApplyViewOptions();
+        }
+    }
+
+    /// <summary>View > Comments.</summary>
+    public bool ShowCommentMargin {
+        get => Settings.ShowCommentMargin;
+        set {
+            Settings.ShowCommentMargin = value;
+            Settings.Save();
+            OnPropertyChanged();
+            ApplyViewOptions();
+        }
+    }
+
+    private void ApplyViewOptions() {
+        foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
+            document.ApplyViewOptions();
+        }
+    }
+
+    /// <summary>Opens a single-instance tool document (statistics, timeline, map), or brings it forward and refreshes it.</summary>
+    private void OpenToolDocument<T>(Func<T> create) where T : DocumentViewModel {
+        if (Project is null) {
+            return;
+        }
+        T? document = Documents.OfType<T>().FirstOrDefault();
+        if (document is null) {
+            document = create();
+            Documents.Add(document);
+        }
+        if (ActiveDocument == document) {
+            document.OnActivated();
+        }
+        ActiveDocument = document;
+    }
+
+    /// <summary>Edit > List All Comments: every open comment in the Find Results window, in reading order.</summary>
+    private void ListComments() {
+        if (Project is null) {
+            return;
+        }
+        References.Clear();
+        int open = 0;
+        int resolved = 0;
+        foreach (Chapter chapter in OrderedChapters) {
+            ChapterDocumentViewModel? document = Documents.OfType<ChapterDocumentViewModel>().FirstOrDefault(d => d.Chapter == chapter);
+            document?.SyncComments();
+            string text = GetChapterText(chapter);
+            LineIndex lines = new(text);
+            foreach (ChapterComment comment in chapter.Comments.OrderBy(static comment => comment.Offset)) {
+                if (comment.IsResolved) {
+                    resolved++;
+                    continue;
+                }
+                open++;
+                int offset = Math.Clamp(comment.Offset, 0, text.Length);
+                int length = Math.Clamp(comment.Length, 0, text.Length - offset);
+                (int line, int column) = lines.GetLocation(offset);
+                string quoted = text.Substring(offset, length).Replace('\n', ' ');
+                string anchor = comment.IsOrphaned || (quoted.Length == 0)
+                    ? "(deleted text)"
+                    : $"\u201C{(quoted.Length > 60 ? quoted[..57] + "..." : quoted)}\u201D";
+                References.Add(new ReferenceItem(chapter, offset, length, line, column, $"{comment.Text.Replace('\n', ' ')}   \u2014 on {anchor}") { Document = Project.GetDisplayName(chapter) });
+            }
+        }
+        ReferencesHeader = open == 0
+            ? $"No open comments{(resolved > 0 ? $" ({resolved} resolved)" : "")}. Add one with Ctrl+Alt+M in a chapter."
+            : $"{open} open comment(s){(resolved > 0 ? $", {resolved} resolved" : "")}. Double-click a row to go there.";
+        SelectedBottomTab = FindResultsTab;
+        StatusText = ReferencesHeader;
+    }
+
+    /// <summary>Every chapter's current text in reading order (open chapters from their editors).</summary>
+    public IReadOnlyList<ChapterText> GetManuscript() {
+        return OrderedChapters.Select(chapter => new ChapterText(chapter, GetChapterText(chapter))).ToList();
+    }
+
+    // =====================================================================
     // Autosave and crash recovery
     // =====================================================================
 
@@ -186,6 +318,9 @@ public sealed class MainViewModel : ObservableObject {
             return;
         }
         try {
+            foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
+                document.SyncComments();
+            }
             RecoveryStore.Write(Project, GetChapterText);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException) {
@@ -326,6 +461,7 @@ public sealed class MainViewModel : ObservableObject {
             Project.Chapters.Remove(chapter);
             _diagnostics.Remove(chapter.Id);
             _wordCounts.Remove(chapter.Id);
+            _mentionCounts.Remove(chapter.Id);
         }
         Project.Books.Remove(book);
         RefreshErrorList();
@@ -356,6 +492,7 @@ public sealed class MainViewModel : ObservableObject {
         project.Chapters.Remove(chapter);
         _diagnostics.Remove(chapter.Id);
         _wordCounts.Remove(chapter.Id);
+        _mentionCounts.Remove(chapter.Id);
         RefreshErrorList();
         string bible = project.IsSeries ? "Series Bible" : "Story Bible";
         Log($"Moved '{chapter.Title}' into the {bible} as a chapter plan.");
@@ -620,6 +757,7 @@ public sealed class MainViewModel : ObservableObject {
         _grammarOptions = null;
         _diagnostics.Clear();
         _wordCounts.Clear();
+        _mentionCounts.Clear();
         SolutionItems.Clear();
         References.Clear();
         RefreshErrorList();
@@ -694,6 +832,7 @@ public sealed class MainViewModel : ObservableObject {
         }
         _diagnostics.Clear();
         _wordCounts.Clear();
+        _mentionCounts.Clear();
         References.Clear();
         _grammarOptions = null;
         Project = project;
@@ -791,11 +930,11 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     /// <summary>Opens (or re-opens) a word diff in a document tab.</summary>
-    public void OpenDiff(string fileTitle, string description, string diff) {
+    public void OpenDiff(string fileTitle, string description, string diff, string comparedWith = "last commit") {
         foreach (DiffDocumentViewModel old in Documents.OfType<DiffDocumentViewModel>().Where(d => d.FileTitle == fileTitle).ToList()) {
             RemoveDocument(old);
         }
-        DiffDocumentViewModel document = new(this, fileTitle, description, diff);
+        DiffDocumentViewModel document = new(this, fileTitle, description, diff, comparedWith);
         Documents.Add(document);
         ActiveDocument = document;
     }
@@ -975,6 +1114,7 @@ public sealed class MainViewModel : ObservableObject {
         Project.Chapters.Remove(chapter);
         _diagnostics.Remove(chapter.Id);
         _wordCounts.Remove(chapter.Id);
+        _mentionCounts.Remove(chapter.Id);
         RefreshErrorList();
         Log($"Removed chapter '{chapter.Title}'.");
     }
@@ -1092,8 +1232,39 @@ public sealed class MainViewModel : ObservableObject {
             return new ErrorItem(diagnostic, chapter, line, column) { Document = displayName };
         }).ToList();
         _wordCounts[chapter.Id] = result.Statistics.Words;
+        _mentionCounts[chapter.Id] = result.Mentions.GroupBy(static mention => mention.Entity.Id).ToDictionary(static group => group.Key, static group => group.Count());
         RefreshErrorList();
         UpdateProjectStatistics();
+        foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
+            if (document.Chapter != chapter) {
+                document.Editor?.RefreshLenses();
+            }
+        }
+    }
+
+    /// <summary>The name lens for a story element seen from <paramref name="chapter"/>: totals, and the last chapter before it that mentions it.</summary>
+    public NameLensInfo GetNameLens(StoryEntity entity, Chapter chapter) {
+        int references = 0;
+        int chapters = 0;
+        Chapter? lastSeen = null;
+        int lastSeenIndex = -1;
+        int currentIndex = -1;
+        int index = 0;
+        foreach (Chapter candidate in OrderedChapters) {
+            if (candidate == chapter) {
+                currentIndex = index;
+            }
+            if (_mentionCounts.TryGetValue(candidate.Id, out Dictionary<Guid, int>? counts) && counts.TryGetValue(entity.Id, out int count) && (count > 0)) {
+                references += count;
+                chapters++;
+                if (currentIndex < 0) {
+                    lastSeen = candidate;
+                    lastSeenIndex = index;
+                }
+            }
+            index++;
+        }
+        return new NameLensInfo(entity, references, chapters, lastSeen, lastSeen is null ? 0 : currentIndex - lastSeenIndex);
     }
 
     /// <summary>Chapters in reading order: book by book in a series.</summary>

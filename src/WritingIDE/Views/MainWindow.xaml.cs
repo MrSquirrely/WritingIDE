@@ -17,6 +17,85 @@ public partial class MainWindow : HandyControl.Controls.Window {
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = viewModel;
+        viewModel.PropertyChanged += (_, e) => {
+            if (e.PropertyName == nameof(MainViewModel.IsDistractionFree)) {
+                ApplyDistractionFree(viewModel.IsDistractionFree);
+            }
+            else if ((e.PropertyName == nameof(MainViewModel.ActiveDocument)) && viewModel.IsDistractionFree && (viewModel.ActiveChapter is null)) {
+                viewModel.IsDistractionFree = false;
+            }
+        };
+    }
+
+    private readonly List<(DefinitionBase Definition, GridLength Size)> _savedSizes = [];
+    private WindowState _savedState;
+
+    /// <summary>Distraction-free writing: full screen, everything but the chapter hidden. Undone exactly on exit.</summary>
+    private void ApplyDistractionFree(bool enabled) {
+        UIElement[] chrome = [ToolBarHost, StatusBarHost, SolutionPanel, LeftSplitter, BottomSplitter, BottomPanel, RightSplitter, PropertiesPanel];
+        foreach (UIElement element in chrome) {
+            element.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        }
+        if (enabled) {
+            _savedSizes.Clear();
+            foreach (ColumnDefinition column in MainGrid.ColumnDefinitions) {
+                _savedSizes.Add((column, column.Width));
+            }
+            foreach (RowDefinition row in MainGrid.RowDefinitions) {
+                _savedSizes.Add((row, row.Height));
+            }
+            foreach (ColumnDefinition column in MainGrid.ColumnDefinitions.Where(column => MainGrid.ColumnDefinitions.IndexOf(column) != 2)) {
+                column.MinWidth = 0;
+                column.Width = new GridLength(0);
+            }
+            foreach (RowDefinition row in MainGrid.RowDefinitions.Skip(1)) {
+                row.MinHeight = 0;
+                row.Height = new GridLength(0);
+            }
+            DocumentWell.Tag = "Focus";
+            _savedState = WindowState;
+            // HandyControl's IsFullScreen fails here (negative CaptionHeight), so: no title bar, maximized.
+            SetChromeSafely(() => {
+                ShowNonClientArea = false;
+                WindowState = WindowState.Maximized;
+            });
+        }
+        else {
+            foreach ((DefinitionBase definition, GridLength size) in _savedSizes) {
+                if (definition is ColumnDefinition column) {
+                    column.Width = size;
+                    column.MinWidth = size.IsStar ? 300 : (size.Value > 10 ? 150 : 0);
+                }
+                else if (definition is RowDefinition row) {
+                    row.Height = size;
+                    row.MinHeight = size.IsStar ? 200 : (size.Value > 10 ? 80 : 0);
+                }
+            }
+            DocumentWell.Tag = null;
+            SetChromeSafely(() => {
+                ShowNonClientArea = true;
+                WindowState = _savedState;
+            });
+        }
+    }
+
+    /// <summary>Window chrome changes are cosmetic: a failure must not stop the editor switching modes.</summary>
+    private void SetChromeSafely(Action change) {
+        try {
+            change();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException) {
+            _viewModel.Log($"warning: could not change the window frame: {exception.Message}");
+        }
+    }
+
+    /// <summary>Esc leaves distraction-free mode, unless something else (IntelliSense, a search box) used it first.</summary>
+    protected override void OnKeyDown(KeyEventArgs e) {
+        if ((e.Key == Key.Escape) && !e.Handled && _viewModel.IsDistractionFree) {
+            _viewModel.IsDistractionFree = false;
+            e.Handled = true;
+        }
+        base.OnKeyDown(e);
     }
 
     /// <summary>The editor consumes Ctrl+I (it is the Tab character), so the Import shortcut is handled before it gets there.</summary>

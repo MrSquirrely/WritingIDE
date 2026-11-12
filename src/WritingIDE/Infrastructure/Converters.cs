@@ -32,3 +32,16 @@ public sealed class BoolToIndexConverter : IValueConverter {
         return value is 1;
     }
 }
+
+/// <summary>A UTC DateTime shown as a short local date and time.</summary>
+public sealed class LocalTimeConverter : IValueConverter {
+    public static LocalTimeConverter Instance { get; } = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) {
+        return value is DateTime time ? time.ToLocalTime().ToString("g", culture) : "";
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) {
+        throw new NotSupportedException();
+    }
+}

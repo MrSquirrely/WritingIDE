@@ -49,4 +49,13 @@
   <SolidColorBrush x:Key="EditorCurrentLineBrush" Color="#F5F8FD" />
   <SolidColorBrush x:Key="EditorCurrentLineBorderBrush" Color="#E6EBF5" />
   <SolidColorBrush x:Key="EditorSelectionBrush" Color="#ADD6FF" />
+
+  <!-- Comments, name lenses, focus mode -->
+  <SolidColorBrush x:Key="CommentHighlightBrush" Color="#55FFD54F" />
+  <SolidColorBrush x:Key="CommentActiveHighlightBrush" Color="#AAFFC107" />
+  <SolidColorBrush x:Key="CommentCardBrush" Color="#FFFBE6" />
+  <SolidColorBrush x:Key="CommentCardBorderBrush" Color="#F0D58C" />
+  <SolidColorBrush x:Key="CommentMarginBrush" Color="#FAFAFA" />
+  <SolidColorBrush x:Key="LensBrush" Color="#8A8A8A" />
+  <SolidColorBrush x:Key="FocusBackgroundBrush" Color="#FBFAF7" />
 </ResourceDictionary>

@@ -75,6 +75,15 @@ The **Git Changes** tool window (bottom panel, or click the branch in the status
 
 It uses the Git for Windows command line, and Git Credential Manager handles sign-in for push and pull.
 
+## Writing tools
+
+- **Distraction-free writing** (F11, View menu): full screen with only the chapter, in a centred column of larger text. The line you are typing stays in the middle of the screen (typewriter scrolling), and a faint word count sits in the corner. Esc or F11 returns.
+- **Comments and margin notes**: select text and press Ctrl+Alt+M (or right-click > Add Comment). The commented text is shaded, and the comment card sits in a margin level with its line, where you edit it in place. Cards can be resolved (✓) or deleted. Comments follow their text as you edit, and are found again if the chapter changed while it was closed. **Edit > List All Comments** puts every open comment in Find Results. They are saved in the project file.
+- **Snapshots (version history)**: **Take snapshot** in a chapter's Properties (Ctrl+Alt+S) saves the current text, with an optional name, under `Snapshots/` in the project folder. Each snapshot can be **compared** with the current text (a word diff that shows only changed paragraphs) or **restored**. Restoring snapshots the current text first, and Ctrl+Z undoes it.
+- **Character and POV Statistics** (Analyze menu): for each character, mentions, chapters, POV chapters, dialogue lines and words spoken, and first and last appearance. Also a presence heat map (character × chapter) and each POV's share of the manuscript. A chapter's point of view is set in its Properties, or detected: first person when the narration is full of "I/me/my", otherwise the character named most outside dialogue. Speech is attributed to the name next to the quotation.
+- **Timeline** (Analyze menu): chapters in reading order as cards, each with a story date edited in place, POV, words and synopsis. Events sit under the chapter that first mentions them (or the one in their `Chapter` attribute), and each character has a lane of dots wherever they appear. Dates such as "Day 3", "Year 2, Day 14", "12 May 1204" or "1204" are ordered, and a chapter set earlier than the one before it is flagged as a possible flashback.
+- **Relationship Map** (Analyze menu): characters (and optionally factions, places and others) as nodes. Relationships you add on an element's page ("sister of", "rival of") are drawn as solid labelled lines. Elements that share paragraphs are joined by dashed lines; set how many shared paragraphs it takes. Drag nodes to arrange them (saved with the project), hover to highlight a node's links, double-click to open.
+
 ## Plugins: Harper
 
 **Tools > Plugins** turns on [Harper](https://github.com/Automattic/harper), Automattic's open-source grammar checker. WritingIDE runs Harper's language server, `harper-ls`, on your computer (text never leaves it) and adds its findings to the Error List and squiggles under rule ID `HARPER`. Harper's quick fixes appear in Ctrl+. like the built-in ones.
@@ -99,6 +108,9 @@ It uses the Git for Windows command line, and Git Credential Manager handles sig
 | Light bulb (Ctrl+.) | Quick fixes, "Add to dictionary", "Suppress rule", "Create story element from this word" |
 | Go To Definition (F12, Ctrl+Click) | Opens the story element |
 | Find All References (Shift+F12) | Every mention, in Find Results |
+| CodeLens | Name lenses: above the first mention of each name in a chapter, its reference count, chapter count and when it was last seen (or "first appearance"). Click a part to act on it. View > Name Lenses |
+| Code review comments | Comments in the margin (Ctrl+Alt+M) |
+| Local history | Chapter snapshots |
 | Rename (F2) | Renames the element and, optionally, every mention in the manuscript |
 | Build (F6 / Ctrl+Shift+B) | Analyze Manuscript: runs every rule on every chapter and writes a build log to Output |
 | Error List | Errors, warnings and messages with filters and a scope (entire manuscript or current chapter); double-click to jump |

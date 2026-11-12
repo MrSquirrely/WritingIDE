@@ -14,6 +14,12 @@ public sealed class AppSettings {
     /// <summary>System (follow Windows), Light or Dark.</summary>
     public string Theme { get; set; } = "System";
 
+    /// <summary>View > Name Lenses: CodeLens-style reference counts above the first mention of each name.</summary>
+    public bool ShowNameLenses { get; set; } = true;
+
+    /// <summary>View > Comments: the margin with comment cards and the comment highlighting.</summary>
+    public bool ShowCommentMargin { get; set; } = true;
+
     private static string StorePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WritingIDE", "settings.json");
 
     public static AppSettings Load() {

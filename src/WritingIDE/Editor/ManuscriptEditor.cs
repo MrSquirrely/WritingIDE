@@ -9,6 +9,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.AvalonEdit.Search;
 
+using WritingIDE.Core.Analysis;
 using WritingIDE.Core.Grammar;
 using WritingIDE.Core.Model;
 using WritingIDE.Core.Text;
@@ -28,7 +29,11 @@ public sealed class ManuscriptEditor : TextEditor {
     private readonly DiagnosticRenderer _diagnostics;
     private readonly EntityHighlighter _highlighter;
     private readonly CompletionController _completion;
+    private readonly CommentRenderer _comments;
+    private readonly NameLensGenerator _lenses;
     private readonly ToolTip _toolTip = new() { Placement = PlacementMode.Mouse, Padding = new Thickness(8, 6, 8, 6) };
+    private IReadOnlyList<EntityMention> _lastMentions = [];
+    private bool _focusMode;
 
     public ManuscriptEditor(ChapterDocumentViewModel owner) {
         _owner = owner;
@@ -59,6 +64,14 @@ public sealed class ManuscriptEditor : TextEditor {
             () => _owner.Shell.Project?.Entities.ToList() ?? [],
             () => _owner.Shell.AutoCompleteNames);
         SearchPanel.Install(TextArea);
+        _comments = new CommentRenderer(owner.CommentSegments);
+        TextArea.TextView.BackgroundRenderers.Add(_comments);
+        MainViewModel shell = owner.Shell;
+        _lenses = new NameLensGenerator((lenses, width) => NameLensGenerator.CreateLensVisual(lenses, width,
+            entity => shell.OpenEntity(entity), shell.FindReferences, chapter => shell.OpenChapter(chapter)));
+        TextArea.TextView.ElementGenerators.Add(_lenses);
+        TextArea.TextEntered += (_, _) => KeepCaretCentered();
+        SizeChanged += (_, _) => UpdateFocusLayout();
 
         TextArea.Caret.PositionChanged += (_, _) => UpdateCaretStatus();
         TextArea.GotKeyboardFocus += (_, _) => UpdateCaretStatus();
@@ -78,7 +91,7 @@ public sealed class ManuscriptEditor : TextEditor {
             return Application.Current.TryFindResource(key) as Brush ?? Brushes.Transparent;
         }
 
-        Background = Resource("EditorBackgroundBrush");
+        Background = Resource(_focusMode ? "FocusBackgroundBrush" : "EditorBackgroundBrush");
         Foreground = Resource("EditorForegroundBrush");
         LineNumbersForeground = Resource("EditorLineNumberBrush");
         TextArea.TextView.CurrentLineBackground = Resource("EditorCurrentLineBrush");
@@ -96,7 +109,110 @@ public sealed class ManuscriptEditor : TextEditor {
     public void ApplyAnalysis(AnalysisResult result) {
         _diagnostics.SetDiagnostics(result.Diagnostics, Document.TextLength);
         _highlighter.SetMentions(result.Mentions, Document.TextLength);
+        _lastMentions = result.Mentions;
+        UpdateLenses();
         TextArea.TextView.Redraw();
+    }
+
+    // ------------------------------------------------------------------
+    // Name lenses (CodeLens), comments and focus mode
+    // ------------------------------------------------------------------
+
+    /// <summary>Recomputes the name lenses (another chapter's analysis may have changed the counts) and redraws if needed.</summary>
+    public void RefreshLenses() {
+        if (UpdateLenses()) {
+            TextArea.TextView.Redraw();
+        }
+    }
+
+    /// <summary>One lens line above the first mention of each story element in this chapter (at most four per line).</summary>
+    private bool UpdateLenses() {
+        Dictionary<int, IReadOnlyList<NameLensInfo>> byLine = [];
+        if (_owner.Shell.ShowNameLenses && !_focusMode) {
+            Dictionary<int, List<NameLensInfo>> lines = [];
+            HashSet<StoryEntity> seen = [];
+            foreach (EntityMention mention in _lastMentions.OrderBy(static mention => mention.Offset)) {
+                if ((mention.End > Document.TextLength) || !seen.Add(mention.Entity)) {
+                    continue;
+                }
+                int line = Document.GetLineByOffset(mention.Offset).LineNumber;
+                if (!lines.TryGetValue(line, out List<NameLensInfo>? entries)) {
+                    entries = [];
+                    lines[line] = entries;
+                }
+                if (entries.Count < 4) {
+                    entries.Add(_owner.Shell.GetNameLens(mention.Entity, _owner.Chapter));
+                }
+            }
+            byLine = lines.ToDictionary(static pair => pair.Key, static pair => (IReadOnlyList<NameLensInfo>)pair.Value);
+        }
+        bool changed = (byLine.Count > 0) || _lenses.HasLenses;
+        _lenses.SetLenses(byLine);
+        return changed;
+    }
+
+    /// <summary>Distraction-free writing: no line numbers or lenses, a centred column of larger text, typewriter scrolling.</summary>
+    public void SetFocusMode(bool enabled) {
+        if (_focusMode == enabled) {
+            return;
+        }
+        _focusMode = enabled;
+        ShowLineNumbers = !enabled;
+        Options.HighlightCurrentLine = !enabled;
+        FontSize = enabled ? 19 : 16;
+        ApplyTheme();
+        UpdateFocusLayout();
+        UpdateLenses();
+        TextArea.TextView.Redraw();
+        if (enabled) {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () => {
+                TextArea.Focus();
+                KeepCaretCentered();
+            });
+        }
+    }
+
+    private void UpdateFocusLayout() {
+        if (_focusMode) {
+            double side = Math.Max(32, (ActualWidth - 760) / 2);
+            TextArea.TextView.Margin = new Thickness(side, 48, side, 48);
+        }
+        else {
+            TextArea.TextView.Margin = new Thickness(12, 8, 24, 8);
+        }
+    }
+
+    /// <summary>Typewriter scrolling in focus mode: the line being written stays in the middle of the screen.</summary>
+    private void KeepCaretCentered() {
+        if (!_focusMode || !TextArea.TextView.VisualLinesValid) {
+            return;
+        }
+        double y = TextArea.TextView.GetVisualPosition(TextArea.Caret.Position, VisualYPosition.LineMiddle).Y;
+        ScrollToVerticalOffset(Math.Max(0, y - (TextArea.TextView.ActualHeight / 2)));
+    }
+
+    public void SetActiveComment(ChapterComment? comment) {
+        if (_comments.ActiveComment != comment) {
+            _comments.ActiveComment = comment;
+            TextArea.TextView.Redraw();
+        }
+    }
+
+    public void SetCommentsVisible(bool visible) {
+        _comments.IsEnabled = visible;
+        TextArea.TextView.Redraw();
+    }
+
+    /// <summary>Selects the commented text and scrolls to it.</summary>
+    public void RevealComment(ChapterComment comment) {
+        CommentSegment? segment = _owner.CommentSegments.FirstOrDefault(segment => segment.Comment == comment);
+        if (segment is not null) {
+            SelectAndReveal(segment.StartOffset, segment.Length);
+        }
+    }
+
+    private void AddComment() {
+        _owner.AddComment(SelectionStart, SelectionLength);
     }
 
     public void RefreshHighlighting() {
@@ -130,6 +246,10 @@ public sealed class ManuscriptEditor : TextEditor {
             _completion.ShowAll();
             e.Handled = true;
         }
+        else if ((key == Key.M) && (modifiers == (ModifierKeys.Control | ModifierKeys.Alt))) {
+            AddComment();
+            e.Handled = true;
+        }
         else if ((key == Key.OemPeriod) && (modifiers == ModifierKeys.Control)) {
             ShowQuickActions();
             e.Handled = true;
@@ -159,8 +279,18 @@ public sealed class ManuscriptEditor : TextEditor {
         }
     }
 
-    /// <summary>Ctrl+Click on a name goes to its definition.</summary>
+    /// <summary>Clicks on a name lens run its action; Ctrl+Click on a name goes to its definition.</summary>
     private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
+        for (DependencyObject? element = e.OriginalSource as DependencyObject; (element is not null) && (element != this); element = VisualTreeHelper.GetParent(element)) {
+            if ((element is FrameworkElement { Tag: Action action })) {
+                action();
+                e.Handled = true;
+                return;
+            }
+            if (element is not Visual) {
+                break;
+            }
+        }
         if (Keyboard.Modifiers != ModifierKeys.Control) {
             return;
         }
@@ -347,6 +477,15 @@ public sealed class ManuscriptEditor : TextEditor {
                 menu.Items.Add(new Separator());
             }
         }
+
+        menu.Items.Add(CreateMenuItem(SelectionLength > 0 ? "Add Comment on Selection" : "Add Comment", "\uE90A", AddComment, "Ctrl+Alt+M"));
+        CommentSegment? commented = _owner.CommentSegments.FindSegmentsContaining(offset).FirstOrDefault();
+        if (commented is not null) {
+            ChapterComment comment = commented.Comment;
+            menu.Items.Add(CreateMenuItem(comment.IsResolved ? "Reopen Comment" : "Resolve Comment", "\uE73E", () => comment.IsResolved = !comment.IsResolved));
+            menu.Items.Add(CreateMenuItem("Delete Comment", "\uE74D", () => _owner.DeleteComment(comment)));
+        }
+        menu.Items.Add(new Separator());
 
         if (includeClipboard) {
             menu.Items.Add(new MenuItem { Command = ApplicationCommands.Cut, CommandTarget = TextArea, Icon = CreateIcon("\uE8C6", Visuals.IconBrush) });

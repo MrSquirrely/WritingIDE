@@ -45,24 +45,44 @@ public static class ProjectSerializer {
             project.Books.Add(new Book(bookDto.Title) { Id = bookDto.Id, Synopsis = bookDto.Synopsis });
         }
         foreach (ChapterDto chapterDto in dto.Chapters) {
-            project.Chapters.Add(new Chapter(chapterDto.Title) {
+            Chapter chapter = new(chapterDto.Title) {
                 Id = chapterDto.Id,
                 BookId = chapterDto.BookId,
                 FileName = chapterDto.File,
                 Synopsis = chapterDto.Synopsis,
                 Status = chapterDto.Status,
+                PointOfView = chapterDto.PointOfView ?? "",
+                StoryDate = chapterDto.StoryDate ?? "",
                 Text = getText(chapterDto)
-            });
+            };
+            foreach (CommentDto commentDto in chapterDto.Comments ?? []) {
+                chapter.Comments.Add(new ChapterComment {
+                    Id = commentDto.Id,
+                    Offset = commentDto.Offset,
+                    Length = commentDto.Length,
+                    AnchorText = commentDto.Anchor,
+                    Text = commentDto.Text,
+                    Author = commentDto.Author,
+                    CreatedUtc = commentDto.Created,
+                    IsResolved = commentDto.Resolved
+                });
+            }
+            project.Chapters.Add(chapter);
         }
         foreach (EntityDto entityDto in dto.Entities) {
             StoryEntity entity = new(entityDto.Kind, entityDto.Name) {
                 Id = entityDto.Id,
                 Aliases = entityDto.Aliases,
                 Summary = entityDto.Summary,
-                Notes = entityDto.Notes
+                Notes = entityDto.Notes,
+                MapX = entityDto.MapX,
+                MapY = entityDto.MapY
             };
             foreach (AttributeDto attribute in entityDto.Attributes) {
                 entity.Attributes.Add(new EntityAttribute(attribute.Key, attribute.Value));
+            }
+            foreach (RelationshipDto relationship in entityDto.Relationships ?? []) {
+                entity.Relationships.Add(new EntityRelationship(relationship.Target, relationship.Label));
             }
             project.Entities.Add(entity);
         }
@@ -131,6 +151,18 @@ public static class ProjectSerializer {
                 File = chapter.FileName,
                 Synopsis = chapter.Synopsis,
                 Status = chapter.Status,
+                PointOfView = NullIfEmpty(chapter.PointOfView),
+                StoryDate = NullIfEmpty(chapter.StoryDate),
+                Comments = chapter.Comments.Count == 0 ? null : chapter.Comments.Select(static comment => new CommentDto {
+                    Id = comment.Id,
+                    Offset = comment.Offset,
+                    Length = comment.Length,
+                    Anchor = comment.AnchorText,
+                    Text = comment.Text,
+                    Author = comment.Author,
+                    Created = comment.CreatedUtc,
+                    Resolved = comment.IsResolved
+                }).ToList(),
                 Text = getText?.Invoke(chapter)
             }).ToList(),
             Entities = project.Entities.Select(static entity => new EntityDto {
@@ -140,11 +172,18 @@ public static class ProjectSerializer {
                 Aliases = entity.Aliases,
                 Summary = entity.Summary,
                 Notes = entity.Notes,
-                Attributes = entity.Attributes.Select(static attribute => new AttributeDto { Key = attribute.Key, Value = attribute.Value }).ToList()
+                Attributes = entity.Attributes.Select(static attribute => new AttributeDto { Key = attribute.Key, Value = attribute.Value }).ToList(),
+                Relationships = entity.Relationships.Count == 0 ? null : entity.Relationships.Select(static relationship => new RelationshipDto { Target = relationship.TargetId, Label = relationship.Label }).ToList(),
+                MapX = entity.MapX,
+                MapY = entity.MapY
             }).ToList(),
             Dictionary = project.CustomDictionary.ToList(),
             DisabledRules = project.DisabledRules.ToList()
         };
+    }
+
+    private static string? NullIfEmpty(string value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     internal static string Serialize<T>(T value) {
@@ -218,6 +257,15 @@ public static class ProjectSerializer {
         public string Synopsis { get; set; } = "";
         public ChapterStatus Status { get; set; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? PointOfView { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? StoryDate { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<CommentDto>? Comments { get; set; }
+
         /// <summary>Only in recovery snapshots; normal project files keep chapter text in Manuscript/*.txt.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Text { get; set; }
@@ -231,6 +279,31 @@ public static class ProjectSerializer {
         public string Summary { get; set; } = "";
         public string Notes { get; set; } = "";
         public List<AttributeDto> Attributes { get; set; } = [];
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<RelationshipDto>? Relationships { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? MapX { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? MapY { get; set; }
+    }
+
+    internal sealed class RelationshipDto {
+        public Guid Target { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    internal sealed class CommentDto {
+        public Guid Id { get; set; }
+        public int Offset { get; set; }
+        public int Length { get; set; }
+        public string Anchor { get; set; } = "";
+        public string Text { get; set; } = "";
+        public string Author { get; set; } = "";
+        public DateTime Created { get; set; }
+        public bool Resolved { get; set; }
     }
 
     internal sealed class AttributeDto {

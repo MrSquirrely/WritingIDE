@@ -11,6 +11,8 @@ using WritingIDE.Core;
 using WritingIDE.Core.Analysis;
 using WritingIDE.Core.Grammar;
 using WritingIDE.Core.Model;
+using WritingIDE.Core.Persistence;
+using WritingIDE.Core.Search;
 using WritingIDE.Editor;
 using WritingIDE.Infrastructure;
 using WritingIDE.Services;
@@ -67,6 +69,30 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
         Chapter = chapter;
         Document = new TextDocument(chapter.Text);
         Document.UndoStack.ClearAll();
+        CommentSegments = new TextSegmentCollection<CommentSegment>(Document);
+        foreach (ChapterComment comment in chapter.Comments) {
+            // The chapter may have been edited while closed (Replace in Files, Git): find each comment's text again.
+            CommentAnchoring.Reanchor(chapter.Text, comment);
+            CommentSegments.Add(new CommentSegment(comment) { StartOffset = comment.Offset, Length = comment.Length });
+        }
+        chapter.Comments.CollectionChanged += OnCommentsChanged;
+        TakeSnapshotCommand = new RelayCommand(() => TakeSnapshot(null));
+        CompareSnapshotCommand = new RelayCommand(parameter => {
+            if (parameter is ChapterSnapshot snapshot) {
+                CompareSnapshot(snapshot);
+            }
+        });
+        RestoreSnapshotCommand = new RelayCommand(parameter => {
+            if (parameter is ChapterSnapshot snapshot) {
+                RestoreSnapshot(snapshot);
+            }
+        });
+        DeleteSnapshotCommand = new RelayCommand(parameter => {
+            if (parameter is ChapterSnapshot snapshot) {
+                DeleteSnapshot(snapshot);
+            }
+        });
+        AddCommentCommand = new RelayCommand(() => AddComment(_editor?.SelectionStart ?? 0, _editor?.SelectionLength ?? 0));
         Document.UndoStack.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(UndoStack.IsOriginalFile)) {
                 OnPropertyChanged(nameof(IsDirty));
@@ -127,12 +153,210 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
 
     public IReadOnlyList<ChapterStatus> Statuses { get; } = Enum.GetValues<ChapterStatus>();
 
+    /// <summary>Choices for the Point of View box: every character, plus first person.</summary>
+    public IEnumerable<string> PointOfViewChoices => (Shell.Project?.GetEntities(EntityKind.Character).Select(static character => character.Name) ?? [])
+        .Order(StringComparer.CurrentCultureIgnoreCase)
+        .Prepend(ChapterPointOfView.FirstPerson);
+
+    /// <summary>Live positions of this chapter's comments; AvalonEdit keeps them in place as the text is edited.</summary>
+    public TextSegmentCollection<CommentSegment> CommentSegments { get; }
+
+    public int OpenCommentCount => Chapter.Comments.Count(static comment => !comment.IsResolved);
+
+    public ObservableCollection<ChapterSnapshot> Snapshots { get; } = [];
+
+    public ICommand TakeSnapshotCommand { get; }
+
+    public ICommand CompareSnapshotCommand { get; }
+
+    public ICommand RestoreSnapshotCommand { get; }
+
+    public ICommand DeleteSnapshotCommand { get; }
+
+    public ICommand AddCommentCommand { get; }
+
+    private CommentMargin? _margin;
+
     protected override FrameworkElement CreateView() {
         _editor = new ManuscriptEditor(this);
         if (LastResult is not null) {
             _editor.ApplyAnalysis(LastResult);
         }
-        return _editor;
+        _margin = new CommentMargin(this, _editor) { IsWanted = Shell.ShowCommentMargin && !Shell.IsDistractionFree };
+        _editor.SetFocusMode(Shell.IsDistractionFree);
+        DockPanel host = new() { LastChildFill = true };
+        DockPanel.SetDock(_margin, Dock.Right);
+        host.Children.Add(_margin);
+        host.Children.Add(_editor);
+        return host;
+    }
+
+    /// <summary>Applies View > Show Comments, Show Name Lenses and distraction-free mode to an open editor.</summary>
+    public void ApplyViewOptions() {
+        if (_margin is not null) {
+            _margin.IsWanted = Shell.ShowCommentMargin && !Shell.IsDistractionFree;
+        }
+        _editor?.SetCommentsVisible(Shell.ShowCommentMargin && !Shell.IsDistractionFree);
+        _editor?.SetFocusMode(Shell.IsDistractionFree);
+        _editor?.RefreshLenses();
+    }
+
+    public override void OnActivated() {
+        RefreshSnapshots();
+        OnPropertyChanged(nameof(PointOfViewChoices));
+    }
+
+    // ------------------------------------------------------------------
+    // Comments
+    // ------------------------------------------------------------------
+
+    /// <summary>Adds a comment on the selection, or on the word at the caret when nothing is selected.</summary>
+    public void AddComment(int offset, int length) {
+        offset = Math.Clamp(offset, 0, Document.TextLength);
+        length = Math.Clamp(length, 0, Document.TextLength - offset);
+        if (length == 0) {
+            (int start, int wordLength) = Core.Text.Tokenizer.GetWordAt(Document.Text, offset);
+            if (wordLength > 0) {
+                (offset, length) = (start, wordLength);
+            }
+        }
+        ChapterComment comment = new() {
+            Offset = offset,
+            Length = length,
+            AnchorText = Document.GetText(offset, length),
+            Author = Environment.UserName,
+            CreatedUtc = DateTime.UtcNow
+        };
+        Chapter.Comments.Add(comment);
+        if (!Shell.ShowCommentMargin) {
+            Shell.ShowCommentMargin = true;
+        }
+        _margin?.FocusComment(comment);
+    }
+
+    public void DeleteComment(ChapterComment comment) {
+        Chapter.Comments.Remove(comment);
+        _editor?.TextArea.Focus();
+    }
+
+    private void OnCommentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) {
+        if (e.OldItems is not null) {
+            foreach (ChapterComment removed in e.OldItems) {
+                CommentSegment? segment = CommentSegments.FirstOrDefault(segment => segment.Comment == removed);
+                if (segment is not null) {
+                    CommentSegments.Remove(segment);
+                }
+            }
+        }
+        if (e.NewItems is not null) {
+            foreach (ChapterComment added in e.NewItems) {
+                if (CommentSegments.All(segment => segment.Comment != added)) {
+                    CommentAnchoring.Reanchor(Document.Text, added);
+                    CommentSegments.Add(new CommentSegment(added) { StartOffset = added.Offset, Length = added.Length });
+                }
+            }
+        }
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset) {
+            CommentSegments.Clear();
+        }
+        OnPropertyChanged(nameof(OpenCommentCount));
+        _editor?.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>Copies the live comment positions (and the text they cover) back to the model, for saving.</summary>
+    public void SyncComments() {
+        foreach (CommentSegment segment in CommentSegments) {
+            ChapterComment comment = segment.Comment;
+            comment.Offset = segment.StartOffset;
+            comment.Length = segment.Length;
+            if (segment.Length > 0) {
+                comment.AnchorText = Document.GetText(segment.StartOffset, segment.Length);
+                comment.IsOrphaned = false;
+            }
+            else if (comment.AnchorText.Length > 0) {
+                comment.IsOrphaned = true;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Snapshots (version history)
+    // ------------------------------------------------------------------
+
+    public void RefreshSnapshots() {
+        Snapshots.Clear();
+        string? directory = Shell.Project?.DirectoryPath;
+        if (string.IsNullOrEmpty(directory)) {
+            return;
+        }
+        foreach (ChapterSnapshot snapshot in SnapshotStore.List(directory, Chapter.Id)) {
+            Snapshots.Add(snapshot);
+        }
+    }
+
+    /// <summary>Takes a snapshot of the text in the editor. Asks for a name unless <paramref name="label"/> is given.</summary>
+    public ChapterSnapshot? TakeSnapshot(string? label) {
+        string? directory = Shell.Project?.DirectoryPath;
+        if (string.IsNullOrEmpty(directory)) {
+            return null;
+        }
+        if (label is null) {
+            InputDialog dialog = new("Take Snapshot", $"Name this version of '{Chapter.Title}' (optional):", "", null) { Owner = Application.Current.MainWindow };
+            if (dialog.ShowDialog() != true) {
+                return null;
+            }
+            label = dialog.Value;
+        }
+        try {
+            ChapterSnapshot? snapshot = SnapshotStore.Take(directory, Chapter, Document.Text, label);
+            RefreshSnapshots();
+            if (snapshot is null) {
+                MainViewModel.Notify("No changes since the last snapshot.");
+            }
+            else {
+                Shell.Log($"Took snapshot '{snapshot.DisplayName}' of '{Chapter.Title}' ({snapshot.Words:N0} words).");
+                Shell.StatusText = $"Snapshot taken: {snapshot.DisplayName}";
+            }
+            return snapshot;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
+            MainViewModel.Notify($"Could not take the snapshot: {exception.Message}", MainViewModel.NotificationKind.Error);
+            return null;
+        }
+    }
+
+    /// <summary>Opens a word diff: what changed from the snapshot to the text in the editor now.</summary>
+    public void CompareSnapshot(ChapterSnapshot snapshot) {
+        string diff = WordDiff.Render(SnapshotStore.LoadText(snapshot), Document.Text);
+        if (diff.Length == 0) {
+            MainViewModel.Notify($"'{Chapter.Title}' is identical to the snapshot '{snapshot.DisplayName}'.");
+            return;
+        }
+        Shell.OpenDiff($"{Chapter.Title} vs {snapshot.DisplayName}", $"changes since the snapshot '{snapshot.DisplayName}'", diff, "snapshot");
+    }
+
+    /// <summary>Replaces the chapter with a snapshot, after snapshotting the current text. Undoable with Ctrl+Z.</summary>
+    public void RestoreSnapshot(ChapterSnapshot snapshot) {
+        MessageBoxResult answer = HandyControl.Controls.MessageBox.Show(Application.Current.MainWindow!,
+            $"Replace the text of '{Chapter.Title}' with the snapshot '{snapshot.DisplayName}'?\n\nThe current text is saved as a snapshot first, and Ctrl+Z undoes the restore.",
+            "Restore Snapshot", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.OK) {
+            return;
+        }
+        string text = SnapshotStore.LoadText(snapshot);
+        TakeSnapshot($"Before restoring '{snapshot.DisplayName}'");
+        Document.Replace(0, Document.TextLength, text);
+        Shell.Log($"Restored '{Chapter.Title}' from the snapshot '{snapshot.DisplayName}'.");
+        MainViewModel.Notify($"Restored the snapshot '{snapshot.DisplayName}'. Ctrl+Z undoes it.", MainViewModel.NotificationKind.Success);
+    }
+
+    public void DeleteSnapshot(ChapterSnapshot snapshot) {
+        MessageBoxResult answer = HandyControl.Controls.MessageBox.Show(Application.Current.MainWindow!,
+            $"Delete the snapshot '{snapshot.DisplayName}'? This cannot be undone.", "Delete Snapshot", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.OK) {
+            SnapshotStore.Delete(snapshot);
+            RefreshSnapshots();
+        }
     }
 
     public void ScheduleAnalysis() {
@@ -163,8 +387,9 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
                 .Select(static group => new MentionSummary(group.Key, group.Count()))
                 .OrderByDescending(static summary => summary.Count)
                 .ToList();
-            _editor?.ApplyAnalysis(result);
+            // Report first: the name lenses read the project-wide counts this updates.
             Shell.ReportAnalysis(Chapter, text, result);
+            _editor?.ApplyAnalysis(result);
         }
         catch (OperationCanceledException) {
             // Superseded by a newer analysis.
@@ -173,6 +398,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
 
     public void SyncToChapter() {
         Chapter.Text = Document.Text;
+        SyncComments();
     }
 
     public void MarkSaved() {
@@ -188,6 +414,9 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
     public override void OnClosed() {
         _analysisTimer.Stop();
         _analysisCancellation?.Cancel();
+        SyncComments();
+        Chapter.Comments.CollectionChanged -= OnCommentsChanged;
+        _margin?.Detach();
         _editor?.Detach();
     }
 }
@@ -215,6 +444,43 @@ public sealed class EntityDocumentViewModel : DocumentViewModel {
                 Shell.NavigateTo(appearance.Chapter, appearance.FirstOffset, appearance.FirstLength);
             }
         });
+        AddRelationshipCommand = new RelayCommand(() => {
+            StoryEntity? target = OtherEntities.FirstOrDefault(static other => other.Kind == EntityKind.Character) ?? OtherEntities.FirstOrDefault();
+            if (target is not null) {
+                Entity.Relationships.Add(new EntityRelationship(target.Id, ""));
+            }
+        }, () => OtherEntities.Count > 0);
+        RemoveRelationshipCommand = new RelayCommand(parameter => {
+            if (parameter is EntityRelationship relationship) {
+                Entity.Relationships.Remove(relationship);
+            }
+        });
+        OpenMapCommand = new RelayCommand(() => Shell.OpenRelationshipMapCommand.Execute(null));
+    }
+
+    /// <summary>Every other story element, for the relationship target box.</summary>
+    public IReadOnlyList<StoryEntity> OtherEntities { get; private set => SetProperty(ref field, value); } = [];
+
+    /// <summary>Relationships other elements define towards this one ("Wren: sister of").</summary>
+    public string IncomingRelationships { get; private set => SetProperty(ref field, value); } = "";
+
+    public ICommand AddRelationshipCommand { get; }
+
+    public ICommand RemoveRelationshipCommand { get; }
+
+    public ICommand OpenMapCommand { get; }
+
+    private void RefreshRelationships() {
+        NovelProject? project = Shell.Project;
+        if (project is null) {
+            return;
+        }
+        OtherEntities = project.Entities.Where(other => other != Entity).OrderBy(static other => other.Kind).ThenBy(static other => other.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        List<string> incoming = project.Entities
+            .Where(other => other != Entity)
+            .SelectMany(other => other.Relationships.Where(relationship => relationship.TargetId == Entity.Id).Select(relationship => $"{other.Name}: {(relationship.Label.Length > 0 ? relationship.Label : "related")}"))
+            .ToList();
+        IncomingRelationships = incoming.Count == 0 ? "" : "Others towards this one: " + string.Join("; ", incoming);
     }
 
     public StoryEntity Entity { get; }
@@ -253,6 +519,7 @@ public sealed class EntityDocumentViewModel : DocumentViewModel {
 
     public override void OnActivated() {
         RefreshAppearances();
+        RefreshRelationships();
     }
 
     public void RefreshAppearances() {
@@ -302,13 +569,13 @@ public sealed class StoryBibleDocumentViewModel : DocumentViewModel {
     }
 }
 
-/// <summary>A read-only word diff of a file against the last commit (from Git Changes).</summary>
-public sealed class DiffDocumentViewModel(MainViewModel shell, string fileTitle, string description, string diff) : DocumentViewModel(shell) {
+/// <summary>A read-only word diff: a file against the last commit (Git Changes) or a chapter against a snapshot.</summary>
+public sealed class DiffDocumentViewModel(MainViewModel shell, string fileTitle, string description, string diff, string comparedWith) : DocumentViewModel(shell) {
     public string FileTitle { get; } = fileTitle;
 
     public override string Title => $"Diff: {FileTitle}";
 
-    public override string ToolTip => $"{FileTitle}: {description} (compared with the last commit)";
+    public override string ToolTip => $"{FileTitle}: {description} (compared with the {comparedWith})";
 
     public override string Glyph => "\uE8CB";
 

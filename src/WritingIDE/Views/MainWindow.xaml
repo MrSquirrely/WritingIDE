@@ -20,6 +20,8 @@
     <KeyBinding Key="I" Modifiers="Ctrl" Command="{Binding ImportCommand}" />
     <KeyBinding Key="F" Modifiers="Ctrl+Shift" Command="{Binding FindInFilesCommand}" />
     <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{Binding ReplaceInFilesCommand}" />
+    <KeyBinding Key="F11" Command="{Binding ToggleDistractionFreeCommand}" />
+    <KeyBinding Key="S" Modifiers="Ctrl+Alt" Command="{Binding TakeSnapshotCommand}" />
   </Window.InputBindings>
 
   <Window.Resources>
@@ -75,9 +77,67 @@
           </StackPanel>
           <TextBlock Style="{StaticResource FormLabel}" Text="Status" />
           <ComboBox ItemsSource="{Binding Statuses}" SelectedItem="{Binding Chapter.Status}" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Point of view" />
+          <ComboBox IsEditable="True" ItemsSource="{Binding PointOfViewChoices}" Text="{Binding Chapter.PointOfView, UpdateSourceTrigger=LostFocus}"
+                    hc:InfoElement.Placeholder="Detect automatically" AutomationProperties.Name="Point of view" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Story date" />
+          <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Chapter.StoryDate, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Story date"
+                   hc:InfoElement.Placeholder="e.g. Day 3, or 12 May 1204" ToolTip="When this chapter happens in the story. Used by the Timeline." />
           <TextBlock Style="{StaticResource FormLabel}" Text="Synopsis" />
           <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Chapter.Synopsis, UpdateSourceTrigger=PropertyChanged}"
                    TextWrapping="Wrap" AcceptsReturn="True" MinHeight="60" VerticalScrollBarVisibility="Auto" />
+
+          <DockPanel Margin="0,16,0,4">
+            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Command="{Binding AddCommentCommand}" Content="+ Add (Ctrl+Alt+M)" />
+            <TextBlock Style="{StaticResource FormLabel}" Margin="0">
+              <Run Text="Comments" /> <Run Text="{Binding OpenCommentCount, Mode=OneWay, StringFormat='({0} open)'}" Foreground="{DynamicResource SubtleTextBrush}" />
+            </TextBlock>
+          </DockPanel>
+
+          <DockPanel Margin="0,12,0,4">
+            <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Command="{Binding TakeSnapshotCommand}" Content="+ Take snapshot" ToolTip="Save this version of the chapter (Ctrl+Alt+S)" />
+            <TextBlock Style="{StaticResource FormLabel}" Margin="0" Text="Snapshots" />
+          </DockPanel>
+          <TextBlock Text="Save a version before a big revision; compare or restore it later." Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" TextWrapping="Wrap">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Snapshots.Count}" Value="0">
+                    <Setter Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <ItemsControl ItemsSource="{Binding Snapshots}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <DockPanel Margin="0,3">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource ToolButton}" Padding="3" ToolTip="Compare with the current text" AutomationProperties.Name="Compare snapshot" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.CompareSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE8CB;" FontSize="11" />
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Padding="3" ToolTip="Restore this version" AutomationProperties.Name="Restore snapshot" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.RestoreSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE7A7;" FontSize="11" />
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Padding="3" ToolTip="Delete snapshot" AutomationProperties.Name="Delete snapshot" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.DeleteSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" FontSize="11" Foreground="{DynamicResource ErrorBrush}" />
+                    </Button>
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayName}" />
+                    <TextBlock FontSize="11" Foreground="{DynamicResource SubtleTextBrush}">
+                      <Run Text="{Binding CreatedUtc, Mode=OneWay, Converter={x:Static inf:LocalTimeConverter.Instance}}" /><Run Text=" · " /><Run Text="{Binding Words, Mode=OneWay, StringFormat=N0}" /><Run Text=" words" />
+                    </TextBlock>
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
 
           <TextBlock Style="{StaticResource FormLabel}" Text="Statistics" Margin="0,16,0,4" />
           <Grid>
@@ -172,6 +232,11 @@
         <MenuItem Command="ApplicationCommands.Find" InputGestureText="Ctrl+F" />
         <MenuItem Header="Find in _Files..." Command="{Binding FindInFilesCommand}" InputGestureText="Ctrl+Shift+F" />
         <MenuItem Header="Replace in File_s..." Command="{Binding ReplaceInFilesCommand}" InputGestureText="Ctrl+Shift+H" />
+        <Separator />
+        <MenuItem Header="Add _Comment" Command="{Binding AddCommentCommand}" InputGestureText="Ctrl+Alt+M" />
+        <MenuItem Header="_List All Comments" Command="{Binding ListCommentsCommand}" />
+        <MenuItem Header="Take Chapter Snaps_hot..." Command="{Binding TakeSnapshotCommand}" InputGestureText="Ctrl+Alt+S" />
+        <Separator />
         <MenuItem Command="ApplicationCommands.SelectAll" />
       </MenuItem>
       <MenuItem Header="_View">
@@ -181,6 +246,10 @@
         <MenuItem Header="_Find Results" Click="OnShowFindResults" />
         <Separator />
         <MenuItem Header="_Highlight Story Elements" IsCheckable="True" IsChecked="{Binding HighlightStoryElements}" />
+        <MenuItem Header="_Name Lenses" IsCheckable="True" IsChecked="{Binding ShowNameLenses}" ToolTip="Reference counts above the first mention of each name, like CodeLens" />
+        <MenuItem Header="_Comments" IsCheckable="True" IsChecked="{Binding ShowCommentMargin}" />
+        <Separator />
+        <MenuItem Header="_Distraction-Free Writing" Command="{Binding ToggleDistractionFreeCommand}" InputGestureText="F11" />
         <Separator />
         <MenuItem Header="_Theme">
           <MenuItem Header="Use _Windows Setting" Command="{Binding SetThemeCommand}" CommandParameter="System" IsChecked="{Binding IsSystemTheme, Mode=OneWay}" />
@@ -206,6 +275,10 @@
       </MenuItem>
       <MenuItem Header="_Analyze">
         <MenuItem Header="_Analyze Manuscript" Command="{Binding AnalyzeAllCommand}" InputGestureText="F6" />
+        <Separator />
+        <MenuItem Header="_Character and POV Statistics" Command="{Binding OpenCharacterStatisticsCommand}" />
+        <MenuItem Header="_Timeline" Command="{Binding OpenTimelineCommand}" />
+        <MenuItem Header="_Relationship Map" Command="{Binding OpenRelationshipMapCommand}" />
       </MenuItem>
       <MenuItem Header="_Tools">
         <MenuItem Header="_Auto-complete Names While Typing" IsCheckable="True" IsChecked="{Binding AutoCompleteNames}" />
@@ -231,7 +304,7 @@
   <DockPanel>
 
     <!-- ================= Tool bar ================= -->
-    <Border DockPanel.Dock="Top" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="4,1">
+    <Border x:Name="ToolBarHost" DockPanel.Dock="Top" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="4,1">
       <StackPanel Orientation="Horizontal">
         <Button Style="{StaticResource ToolButton}" Command="{Binding NewProjectCommand}" ToolTip="New Project (Ctrl+Shift+N)">
           <TextBlock Style="{StaticResource Glyph}" Text="&#xE8F4;" Foreground="{DynamicResource BrandBrush}" />
@@ -288,7 +361,7 @@
     </Border>
 
     <!-- ================= Status bar ================= -->
-    <Border DockPanel.Dock="Bottom" Background="{DynamicResource AccentBrush}" Padding="8,3">
+    <Border x:Name="StatusBarHost" DockPanel.Dock="Bottom" Background="{DynamicResource AccentBrush}" Padding="8,3">
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" TextElement.Foreground="White">
           <TextBlock Margin="16,0,0,0" Text="{Binding ActiveChapter.Statistics.Words, StringFormat='{}{0:N0} words in chapter', FallbackValue=''}" />
@@ -310,7 +383,7 @@
     </Border>
 
     <!-- ================= Main area ================= -->
-    <Grid>
+    <Grid x:Name="MainGrid">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="270" MinWidth="150" />
         <ColumnDefinition Width="4" />
@@ -325,7 +398,7 @@
       </Grid.RowDefinitions>
 
       <!-- Solution Explorer -->
-      <DockPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Background="{DynamicResource PanelBrush}">
+      <DockPanel x:Name="SolutionPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Background="{DynamicResource PanelBrush}">
         <Border DockPanel.Dock="Top" Style="{StaticResource ToolWindowHeader}">
           <TextBlock Style="{StaticResource ToolWindowTitle}" Text="Solution Explorer" />
         </Border>
@@ -362,10 +435,10 @@
         </Grid>
       </DockPanel>
 
-      <GridSplitter Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" HorizontalAlignment="Stretch" />
+      <GridSplitter x:Name="LeftSplitter" Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" HorizontalAlignment="Stretch" />
 
       <!-- Document well -->
-      <TabControl Grid.Row="0" Grid.Column="2" Style="{StaticResource DocumentTabControl}"
+      <TabControl x:Name="DocumentWell" Grid.Row="0" Grid.Column="2" Style="{StaticResource DocumentTabControl}"
                   ItemsSource="{Binding Documents}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}">
         <TabControl.ItemTemplate>
           <DataTemplate>
@@ -392,10 +465,17 @@
         <StackPanel hc:Growl.GrowlParent="True" VerticalAlignment="Top" />
       </ScrollViewer>
 
-      <GridSplitter Grid.Row="1" Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+      <!-- Distraction-free mode: a quiet word count, bottom right -->
+      <TextBlock x:Name="FocusWordCount" Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Grid.ColumnSpan="5" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                 Margin="0,0,28,16" Panel.ZIndex="5" Foreground="{DynamicResource SubtleTextBrush}" Opacity="0.7" IsHitTestVisible="False"
+                 Visibility="{Binding IsDistractionFree, Converter={StaticResource BoolToVisibility}}">
+        <Run Text="{Binding ActiveChapter.Statistics.Words, Mode=OneWay, StringFormat='{}{0:N0} words'}" /><Run Text="   ·   Esc or F11 to leave" />
+      </TextBlock>
+
+      <GridSplitter x:Name="BottomSplitter" Grid.Row="1" Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
       <!-- Bottom tool windows -->
-      <TabControl Grid.Row="2" Grid.Column="2" Style="{StaticResource ToolTabControl}" SelectedIndex="{Binding SelectedBottomTab, Mode=TwoWay}" Background="{DynamicResource SurfaceBrush}">
+      <TabControl x:Name="BottomPanel" Grid.Row="2" Grid.Column="2" Style="{StaticResource ToolTabControl}" SelectedIndex="{Binding SelectedBottomTab, Mode=TwoWay}" Background="{DynamicResource SurfaceBrush}">
         <TabItem>
           <TabItem.Header>
             <TextBlock>
@@ -566,10 +646,10 @@
         </TabItem>
       </TabControl>
 
-      <GridSplitter Grid.Row="0" Grid.RowSpan="3" Grid.Column="3" HorizontalAlignment="Stretch" />
+      <GridSplitter x:Name="RightSplitter" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3" HorizontalAlignment="Stretch" />
 
       <!-- Right-hand panel: chapter info or project overview -->
-      <DockPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="4" Background="{DynamicResource SurfaceBrush}">
+      <DockPanel x:Name="PropertiesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="4" Background="{DynamicResource SurfaceBrush}">
         <Border DockPanel.Dock="Top" Style="{StaticResource ToolWindowHeader}">
           <TextBlock Style="{StaticResource ToolWindowTitle}" Text="Properties" />
         </Border>

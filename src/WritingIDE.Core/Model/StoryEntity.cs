@@ -17,6 +17,21 @@ public sealed class EntityAttribute : ObservableObject {
     public string Value { get; set => SetProperty(ref field, value); } = "";
 }
 
+/// <summary>A labelled link from one story element to another, e.g. Wren "sister of" Kael.</summary>
+public sealed class EntityRelationship : ObservableObject {
+    public EntityRelationship() {
+    }
+
+    public EntityRelationship(Guid targetId, string label) {
+        TargetId = targetId;
+        Label = label;
+    }
+
+    public Guid TargetId { get; set => SetProperty(ref field, value); }
+
+    public string Label { get; set => SetProperty(ref field, value); } = "";
+}
+
 /// <summary>A story element (character, place, item, ...). The novel equivalent of a class.</summary>
 public sealed class StoryEntity : ObservableObject {
     private static readonly char[] AliasSeparators = [',', ';'];
@@ -32,7 +47,23 @@ public sealed class StoryEntity : ObservableObject {
             }
             OnPropertyChanged(nameof(Attributes));
         };
+        Relationships.CollectionChanged += (_, e) => {
+            if (e.NewItems is not null) {
+                foreach (EntityRelationship relationship in e.NewItems) {
+                    relationship.PropertyChanged += (_, _) => OnPropertyChanged(nameof(Relationships));
+                }
+            }
+            OnPropertyChanged(nameof(Relationships));
+        };
     }
+
+    /// <summary>How this element relates to others ("sister of", "rival of"). Drawn on the relationship map.</summary>
+    public ObservableCollection<EntityRelationship> Relationships { get; } = [];
+
+    /// <summary>Position on the relationship map as a fraction of its width and height, once placed (null: laid out automatically).</summary>
+    public double? MapX { get; set => SetProperty(ref field, value); }
+
+    public double? MapY { get; set => SetProperty(ref field, value); }
 
     public Guid Id { get; init; } = Guid.NewGuid();
 
