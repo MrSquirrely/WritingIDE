@@ -1,0 +1,63 @@
+<hc:Window x:Class="WritingIDE.Views.OptionsDialog" Icon="/Assets/WritingIDE.ico"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        Title="Project Properties" Width="760" Height="560" WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" Background="{DynamicResource SurfaceBrush}" FontFamily="Segoe UI" FontSize="12">
+  <DockPanel Margin="14">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Style="{StaticResource PrimaryDialogButton}" Content="Close" IsDefault="True" IsCancel="True" />
+    </StackPanel>
+    <TabControl TabStripPlacement="Left" Padding="14,6">
+      <TabItem Header="Project" Padding="14,6">
+        <StackPanel x:Name="ProjectPanel">
+          <TextBlock Style="{StaticResource FormLabel}" Text="Title" Margin="0,0,0,3" />
+          <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Author" />
+          <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Author, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Genre" />
+          <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Genre, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Target word count" />
+          <hc:NumericUpDown Value="{Binding TargetWordCount}" Minimum="1000" Maximum="1000000" Increment="5000" Width="160" HorizontalAlignment="Left" />
+          <TextBlock Style="{StaticResource FormLabel}" Text="Synopsis" />
+          <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Synopsis, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" AcceptsReturn="True" Height="110" VerticalScrollBarVisibility="Auto" />
+        </StackPanel>
+      </TabItem>
+      <TabItem Header="Grammar Rules" Padding="14,6">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,0,0,8"
+                     Text="Each rule is an analyzer, like the code analyzers in Visual Studio. Untick a rule to turn it off for this project." />
+          <ListBox x:Name="RuleList" BorderBrush="{DynamicResource BorderBrush}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <DockPanel Margin="2,4">
+                  <CheckBox DockPanel.Dock="Left" IsChecked="{Binding IsEnabled}" VerticalAlignment="Top" Margin="0,2,8,0" />
+                  <StackPanel>
+                    <TextBlock>
+                      <Run Text="{Binding Rule.Id, Mode=OneWay}" Foreground="Blue" FontFamily="Consolas" />
+                      <Run Text="{Binding Rule.Title, Mode=OneWay}" FontWeight="SemiBold" />
+                      <Run Text="{Binding Summary, Mode=OneWay}" Foreground="{DynamicResource SubtleTextBrush}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding Rule.Description}" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" />
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+      <TabItem Header="Dictionary" Padding="14,6">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,0,0,8"
+                     Text="Words the spell checker accepts in this project. Story element names and aliases are accepted automatically." />
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button DockPanel.Dock="Right" Content="Add" Style="{StaticResource DialogButton}" Click="OnAddWord" />
+            <TextBox x:Name="NewWordBox" Style="{StaticResource FormTextBox}" hc:InfoElement.Placeholder="Word to accept, e.g. a made-up place name" />
+          </DockPanel>
+          <Button DockPanel.Dock="Bottom" Content="Remove selected" HorizontalAlignment="Left" Margin="0,8,0,0" Padding="10,3" Click="OnRemoveWord" />
+          <ListBox x:Name="WordList" BorderBrush="{DynamicResource BorderBrush}" SelectionMode="Extended" />
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</hc:Window>

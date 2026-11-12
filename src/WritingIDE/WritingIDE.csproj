@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>WritingIDE</RootNamespace>
+    <AssemblyTitle>WritingIDE</AssemblyTitle>
+    <Product>WritingIDE</Product>
+    <ApplicationIcon>Assets\WritingIDE.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\WritingIDE.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="HandyControls" Version="3.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WritingIDE.Core\WritingIDE.Core.csproj" />
+  </ItemGroup>
+
+</Project>

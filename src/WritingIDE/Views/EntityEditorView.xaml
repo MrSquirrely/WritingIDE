@@ -1,0 +1,121 @@
+<UserControl x:Class="WritingIDE.Views.EntityEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             Background="{DynamicResource SurfaceBrush}">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid Margin="28,20" MaxWidth="1100" HorizontalAlignment="Left">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="380" />
+        <ColumnDefinition Width="32" />
+        <ColumnDefinition Width="300" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <!-- Header, like a class declaration -->
+      <DockPanel Grid.ColumnSpan="3" Margin="0,0,0,12">
+        <Border DockPanel.Dock="Left" Width="52" Height="52" CornerRadius="6" Background="{Binding GlyphBrush}" Margin="0,0,14,0">
+          <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="26" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock FontFamily="Consolas" FontSize="13">
+            <Run Text="{Binding KindName, Mode=OneWay}" Foreground="Blue" /><Run Text=" " /><Run Text="{Binding Entity.Name, Mode=OneWay}" Foreground="{Binding GlyphBrush, Mode=OneWay}" FontWeight="Bold" />
+          </TextBlock>
+          <TextBlock Text="{Binding Entity.Name}" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding KindDescription}" Foreground="{DynamicResource SubtleTextBrush}" />
+        </StackPanel>
+      </DockPanel>
+
+      <!-- Definition -->
+      <StackPanel Grid.Row="1" Grid.Column="0">
+        <TextBlock Style="{StaticResource FormLabel}" Text="Name" />
+        <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Entity.Name, UpdateSourceTrigger=PropertyChanged}" FontSize="14" />
+        <TextBlock Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,2,0,0" Text="Editing the name here does not touch the manuscript. Use Rename (F2) to update every reference." TextWrapping="Wrap" />
+
+        <TextBlock Style="{StaticResource FormLabel}" Text="Aliases" />
+        <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Entity.Aliases, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="e.g. Liz, Lizzie, Miss Bennet" />
+        <TextBlock Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,2,0,0" Text="Comma separated: nicknames, surnames, titles. Aliases are highlighted and offered by IntelliSense too." TextWrapping="Wrap" />
+
+        <TextBlock Style="{StaticResource FormLabel}" Text="Summary" />
+        <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Entity.Summary, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="One or two sentences, shown in IntelliSense and Quick Info" TextWrapping="Wrap" AcceptsReturn="False" MinHeight="44" />
+
+        <DockPanel Margin="0,14,0,3">
+          <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Command="{Binding AddAttributeCommand}" Content="+ Add attribute" />
+          <TextBlock Style="{StaticResource FormLabel}" Margin="0" Text="Attributes" />
+        </DockPanel>
+        <DataGrid ItemsSource="{Binding Entity.Attributes}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource DividerBrush}" BorderBrush="{DynamicResource BorderBrush}" RowHeight="26" MinHeight="60">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Attribute" Binding="{Binding Key, UpdateSourceTrigger=PropertyChanged}" Width="150" />
+            <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+            <DataGridTemplateColumn Width="30">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Button Style="{StaticResource ToolButton}" Padding="2" ToolTip="Remove attribute" CommandParameter="{Binding}"
+                          Command="{Binding DataContext.RemoveAttributeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" FontSize="11" Foreground="{DynamicResource ErrorBrush}" />
+                  </Button>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Style="{StaticResource FormLabel}" Text="Notes" />
+        <TextBox Style="{StaticResource FormTextBox}" Text="{Binding Entity.Notes, UpdateSourceTrigger=PropertyChanged}" hc:InfoElement.Placeholder="Backstory, research, anything else" VerticalContentAlignment="Top"
+                 TextWrapping="Wrap" AcceptsReturn="True" MinHeight="160" VerticalScrollBarVisibility="Auto" FontFamily="Cambria" FontSize="14" />
+      </StackPanel>
+
+      <!-- Usage -->
+      <StackPanel Grid.Row="1" Grid.Column="2">
+        <Border Background="{DynamicResource InfoPanelBrush}" BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1" Padding="10" Margin="0,10,0,0">
+          <StackPanel>
+            <TextBlock FontWeight="SemiBold" Text="IntelliSense" />
+            <TextBlock Text="{Binding TriggerHint}" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,4,0,0" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Style="{StaticResource FormLabel}" Text="Appears in" Margin="0,16,0,3" />
+        <TextBlock Text="{Binding AppearanceSummary}" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" />
+        <ItemsControl ItemsSource="{Binding Appearances}" Margin="0,6,0,0">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource LinkButton}" Padding="0,3" Command="{Binding DataContext.OpenChapterCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Count, StringFormat='×{0}'}" Foreground="{DynamicResource SubtleTextBrush}" Margin="10,0,0,0" />
+                  <TextBlock Style="{StaticResource Glyph}" Text="&#xE8A5;" Foreground="{DynamicResource IconGreyBrush}" Margin="0,0,6,0" />
+                  <TextBlock Text="{Binding Title}" />
+                </DockPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Style="{StaticResource FormLabel}" Text="Actions" Margin="0,18,0,6" />
+        <Button Style="{StaticResource TileButton}" Padding="10,6" Command="{Binding FindReferencesCommand}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE721;" Margin="0,0,8,0" />
+            <TextBlock Text="Find All References" />
+            <TextBlock Text="  Shift+F12" Foreground="{DynamicResource SubtleTextBrush}" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource TileButton}" Padding="10,6" Command="{Binding RenameCommand}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE8AC;" Margin="0,0,8,0" />
+            <TextBlock Text="Rename Everywhere..." />
+            <TextBlock Text="  F2" Foreground="{DynamicResource SubtleTextBrush}" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource TileButton}" Padding="10,6" Command="{Binding DeleteCommand}">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;" Foreground="{DynamicResource ErrorBrush}" Margin="0,0,8,0" />
+            <TextBlock Text="Delete" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,88 @@
+<hc:Window x:Class="WritingIDE.Views.PluginsDialog" Icon="/Assets/WritingIDE.ico"
+           xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:hc="https://handyorg.github.io/handycontrol"
+           Title="Plugins" Width="780" Height="600" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+           Background="{DynamicResource ChromeBrush}" NonClientAreaBackground="{DynamicResource ChromeBrush}" FontFamily="Segoe UI" FontSize="12">
+  <DockPanel Margin="18,14,18,14">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Style="{StaticResource PrimaryDialogButton}" Content="Close" IsCancel="True" IsDefault="True" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+      <TextBlock Text="Plugins" FontSize="22" FontWeight="Light" />
+      <TextBlock Foreground="{DynamicResource LabelBrush}" TextWrapping="Wrap"
+                 Text="Plugins add analyzers to the grammar engine. Their findings appear as squiggles and in the Error List next to WritingIDE's own rules, and a project can switch any of them off in Tools > Options > Grammar Rules." />
+    </StackPanel>
+
+    <!-- Harper -->
+    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="18,14">
+      <DockPanel>
+        <DockPanel DockPanel.Dock="Top">
+          <ToggleButton x:Name="EnabledSwitch" DockPanel.Dock="Right" Style="{StaticResource ToggleButtonSwitch}" VerticalAlignment="Top"
+                        Checked="OnEnabledChanged" Unchecked="OnEnabledChanged" ToolTip="Enable or disable Harper" />
+          <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="8" Background="#1F2937" Margin="0,0,14,0" VerticalAlignment="Top">
+            <TextBlock Text="H" FontSize="24" FontWeight="Bold" Foreground="#F3D34A" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel>
+            <TextBlock FontSize="16">
+              <Run Text="Harper" FontWeight="SemiBold" /> <Run Text="grammar checker" Foreground="{DynamicResource SubtleTextBrush}" />
+            </TextBlock>
+            <TextBlock Foreground="{DynamicResource SubtleTextBrush}">
+              <Run Text="by Automattic  ·  open source  ·  runs on this computer; your text never leaves it" />
+            </TextBlock>
+            <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource LabelBrush}"
+                       Text="A fast English grammar checker. WritingIDE runs its language server, harper-ls, in the background and adds its findings (spelling, grammar, punctuation, word choice) to its own. Your story element names are never reported as misspelled." />
+          </StackPanel>
+        </DockPanel>
+
+        <Border DockPanel.Dock="Top" x:Name="StatusBorder" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="4" Padding="10,6" Margin="0,14,0,0">
+          <TextBlock TextWrapping="Wrap">
+            <Run x:Name="StatusDot" Text="&#x25CF;" Foreground="{DynamicResource SubtleTextBrush}" /> <Run x:Name="StatusText" Text="Disabled" />
+          </TextBlock>
+        </Border>
+
+        <Grid DockPanel.Dock="Top" Margin="0,14,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="120" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition />
+          </Grid.RowDefinitions>
+          <TextBlock Text="harper-ls location" VerticalAlignment="Center" />
+          <TextBox x:Name="PathBox" Grid.Column="1" Style="{StaticResource FormTextBox}" Margin="0,3" LostFocus="OnPathChanged"
+                   hc:InfoElement.Placeholder="Empty: detect automatically (WritingIDE's plugin folder, PATH, ~/.cargo/bin)" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Button Style="{StaticResource DialogButton}" Content="Browse..." Click="OnBrowse" />
+            <Button Style="{StaticResource DialogButton}" Content="Detect" Click="OnDetect" />
+          </StackPanel>
+          <TextBlock Grid.Row="1" Text="English dialect" VerticalAlignment="Center" />
+          <ComboBox x:Name="DialectBox" Grid.Row="1" Grid.Column="1" Width="180" HorizontalAlignment="Left" Margin="0,6" SelectionChanged="OnDialectChanged" />
+        </Grid>
+
+        <WrapPanel DockPanel.Dock="Top" Margin="0,12,0,0">
+          <Button x:Name="InstallButton" Style="{StaticResource PrimaryDialogButton}" Margin="0,0,8,0" Click="OnInstall">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE896;" Margin="0,0,6,0" />
+              <TextBlock Text="Download and install latest" />
+            </StackPanel>
+          </Button>
+          <Button x:Name="TestButton" Style="{StaticResource DialogButton}" Margin="0,0,8,0" Content="Test" Click="OnTest" />
+          <Button x:Name="UninstallButton" Style="{StaticResource DialogButton}" Margin="0,0,8,0" Content="Uninstall" Click="OnUninstall"
+                  ToolTip="Remove the copy of harper-ls that WritingIDE installed" />
+          <Button Style="{StaticResource DialogButton}" Margin="0" Content="Harper on GitHub" Click="OnOpenProject" />
+        </WrapPanel>
+
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" Margin="0,8,0,0"
+                   Text="Download and install fetches the official harper-ls Windows build from github.com/Automattic/harper/releases into %LocalAppData%\WritingIDE\Plugins\Harper." />
+
+        <TextBox x:Name="TestOutput" Style="{StaticResource FormTextBox}" Margin="0,12,0,0" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas"
+                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" Background="{DynamicResource SurfaceAltBrush}"
+                 hc:InfoElement.Placeholder="Test runs Harper on a sample sentence and lists what it finds." />
+      </DockPanel>
+    </Border>
+  </DockPanel>
+</hc:Window>
