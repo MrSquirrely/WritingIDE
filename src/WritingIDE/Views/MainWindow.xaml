@@ -18,6 +18,8 @@
     <KeyBinding Key="B" Modifiers="Ctrl+Shift" Command="{Binding AnalyzeAllCommand}" />
     <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding CloseDocumentCommand}" />
     <KeyBinding Key="I" Modifiers="Ctrl" Command="{Binding ImportCommand}" />
+    <KeyBinding Key="F" Modifiers="Ctrl+Shift" Command="{Binding FindInFilesCommand}" />
+    <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{Binding ReplaceInFilesCommand}" />
   </Window.InputBindings>
 
   <Window.Resources>
@@ -168,6 +170,8 @@
         <MenuItem Command="ApplicationCommands.Paste" />
         <Separator />
         <MenuItem Command="ApplicationCommands.Find" InputGestureText="Ctrl+F" />
+        <MenuItem Header="Find in _Files..." Command="{Binding FindInFilesCommand}" InputGestureText="Ctrl+Shift+F" />
+        <MenuItem Header="Replace in File_s..." Command="{Binding ReplaceInFilesCommand}" InputGestureText="Ctrl+Shift+H" />
         <MenuItem Command="ApplicationCommands.SelectAll" />
       </MenuItem>
       <MenuItem Header="_View">
@@ -206,6 +210,13 @@
       <MenuItem Header="_Tools">
         <MenuItem Header="_Auto-complete Names While Typing" IsCheckable="True" IsChecked="{Binding AutoCompleteNames}" />
         <Separator />
+        <MenuItem Header="{Binding AutosaveLabel}" HeaderStringFormat="Auto_save to Disk ({0})">
+          <MenuItem Header="Off (crash recovery only)" Command="{Binding SetAutosaveCommand}" CommandParameter="0" />
+          <MenuItem Header="Every minute" Command="{Binding SetAutosaveCommand}" CommandParameter="1" />
+          <MenuItem Header="Every 2 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="2" />
+          <MenuItem Header="Every 5 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="5" />
+          <MenuItem Header="Every 10 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="10" />
+        </MenuItem>
         <MenuItem Header="_Plugins..." Command="{Binding PluginsCommand}" />
         <MenuItem Header="_Options..." Command="{Binding OptionsCommand}" />
       </MenuItem>
@@ -285,6 +296,10 @@
           <TextBlock Margin="16,0,0,0" Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}">
             <Run Text="&#xEA39;" FontFamily="Segoe MDL2 Assets" /> <Run Text="{Binding ErrorCount, Mode=OneWay}" />
             <Run Text="  &#xE7BA;" FontFamily="Segoe MDL2 Assets" /> <Run Text="{Binding WarningCount, Mode=OneWay}" />
+          </TextBlock>
+          <TextBlock Margin="16,0,0,0" Cursor="Hand" MouseLeftButtonUp="OnGitStatusClicked" ToolTip="Git Changes"
+                     Visibility="{Binding Git.IsRepository, Converter={StaticResource BoolToVisibility}}">
+            <Run Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" /> <Run Text="{Binding Git.StatusBarText, Mode=OneWay}" />
           </TextBlock>
           <TextBlock Margin="24,0,0,0" MinWidth="110">
             <Run Text="Ln" /> <Run Text="{Binding CaretLine, Mode=OneWay}" /> <Run Text="  Col" /> <Run Text="{Binding CaretColumn, Mode=OneWay}" />
@@ -458,6 +473,96 @@
               </DataGrid.Columns>
             </DataGrid>
           </DockPanel>
+        </TabItem>
+        <!-- ================= Git Changes ================= -->
+        <TabItem DataContext="{Binding Git}">
+          <TabItem.Header>
+            <TextBlock>
+              <Run Text="Git Changes" /> <Run Text="{Binding Changes.Count, Mode=OneWay, StringFormat='({0})'}" Foreground="{DynamicResource SubtleTextBrush}" />
+            </TextBlock>
+          </TabItem.Header>
+          <Grid Background="{DynamicResource SurfaceBrush}">
+            <!-- Git missing / project not in a repository -->
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding IsNotRepository, Converter={StaticResource BoolToVisibility}}">
+              <TextBlock Text="This project is not in a Git repository." HorizontalAlignment="Center" Foreground="{DynamicResource LabelBrush}" />
+              <TextBlock Text="Git keeps every version of your manuscript, so you can see what changed and go back." HorizontalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,4,0,10" />
+              <Button Style="{StaticResource PrimaryDialogButton}" Content="Create Git Repository" AutomationProperties.Name="Create Git Repository" HorizontalAlignment="Center" Margin="0" Command="{Binding InitCommand}" />
+            </StackPanel>
+            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" Text="{Binding Message}"
+                       Visibility="{Binding IsGitInstalled, Converter={x:Static inf:BoolToVisibilityConverter.Inverted}}" />
+
+            <Grid Visibility="{Binding IsRepository, Converter={StaticResource BoolToVisibility}}" Margin="8,6,8,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding PullCommand}" AutomationProperties.Name="Pull" ToolTip="Pull (fast-forward only)">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE896;" />
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding PushCommand}" AutomationProperties.Name="Push" ToolTip="Push">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE898;" />
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding AddRemoteCommand}" AutomationProperties.Name="Add remote" ToolTip="Add remote (connect to GitHub or another host)">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE71B;" />
+                    </Button>
+                    <Button Style="{StaticResource ToolButton}" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh Git status" ToolTip="Refresh">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE72C;" />
+                    </Button>
+                  </StackPanel>
+                  <TextBlock VerticalAlignment="Center">
+                    <Run Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource MessageBrush}" />
+                    <Run Text="{Binding Branch, Mode=OneWay}" FontWeight="SemiBold" />
+                    <Run Text="{Binding Ahead, Mode=OneWay, StringFormat='  ↑{0}'}" Foreground="{DynamicResource SubtleTextBrush}" />
+                    <Run Text="{Binding Behind, Mode=OneWay, StringFormat='↓{0}'}" Foreground="{DynamicResource SubtleTextBrush}" />
+                  </TextBlock>
+                </DockPanel>
+                <TextBox DockPanel.Dock="Top" Style="{StaticResource FormTextBox}" Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Commit message" AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="44" MaxHeight="80" VerticalContentAlignment="Top" hc:InfoElement.Placeholder="Commit message, e.g. &quot;Draft chapter 14&quot;" />
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,6,0,4">
+                  <Button Style="{StaticResource PrimaryDialogButton}" Margin="0,0,8,0" Content="Commit All" AutomationProperties.Name="Commit All" Command="{Binding CommitCommand}" ToolTip="Saves, then commits every change" />
+                  <Button Style="{StaticResource DialogButton}" Margin="0" Content="Commit All and Push" AutomationProperties.Name="Commit All and Push" Command="{Binding CommitAndPushCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Message}" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" ToolTip="{Binding Message}" />
+              </DockPanel>
+
+              <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Text="{Binding ChangesHeader}" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" Margin="0,4,0,4" />
+                <ListBox ItemsSource="{Binding Changes}" BorderThickness="0" HorizontalContentAlignment="Stretch" MouseDoubleClick="OnGitChangeDoubleClick"
+                         ToolTip="Double-click to see what changed">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <DockPanel ToolTip="{Binding Path}">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding StatusLetter}" Foreground="{Binding StatusBrush}" FontWeight="Bold" Margin="8,0,4,0" ToolTip="{Binding StatusDescription}" />
+                        <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                      </DockPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+
+              <DockPanel Grid.Column="4">
+                <TextBlock DockPanel.Dock="Top" Text="History" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" Margin="0,4,0,4" />
+                <ListBox ItemsSource="{Binding History}" BorderThickness="0" HorizontalContentAlignment="Stretch">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Foreground="{DynamicResource SubtleTextBrush}" Margin="8,0,0,0" />
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding Hash}" FontFamily="Consolas" Foreground="{DynamicResource MessageBrush}" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding Subject}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Author}" />
+                      </DockPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Grid>
+          </Grid>
         </TabItem>
       </TabControl>
 

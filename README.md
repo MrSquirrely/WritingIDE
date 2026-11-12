@@ -55,6 +55,26 @@ The wind had been rising since noon...
 
 Block types are `NOVEL` or `SERIES` (with a multi-line `Notes:` field for the bible), `BOOK` (chapter blocks after it belong to it), `CHAPTER`, `CHARACTER`, `PLACE`, `ITEM`, `FACTION`, `EVENT`, `LORE` and `CONTINUE`. Common synonyms work too, such as `LOCATION`, `ORGANIZATION`, `CONCEPT` or `MAGIC`. The parser also accepts Markdown bullets and bold field names and `### TYPE: Name` headers, and it ignores code fences and chatter before the first block. Text with no blocks is imported as a plain manuscript, split at Markdown headings or lines like `Chapter 3` and `Prologue`.
 
+## Autosave and crash recovery
+
+- **Crash recovery is always on.** While there are unsaved changes, WritingIDE snapshots the whole project, including every chapter's current text, every 30 seconds. It also takes a snapshot on an unexpected error and when Windows shuts down. Snapshots live in `%LocalAppData%\WritingIDE\Recovery`, never in your project folder. The next time you open the project, WritingIDE offers to recover the unsaved work, and you review it and Save to keep it. Saving, or choosing not to save on close, deletes the snapshot.
+- **Autosave to disk** is optional: **Tools > Autosave to Disk** saves the project every 1, 2, 5 or 10 minutes.
+
+## Find and Replace in Files
+
+**Edit > Find in Files** (Ctrl+Shift+F) and **Replace in Files** (Ctrl+Shift+H) search the entire project, the current book or the current chapter. Options are Match case, Match whole word and regular expressions (`$1` works in replacements). Find All lists every match in Find Results, and double-clicking a row jumps to it. Replace All asks for confirmation first. In open chapters it can be undone with Ctrl+Z; closed chapters change when you save.
+
+## Git
+
+The **Git Changes** tool window (bottom panel, or click the branch in the status bar) works like Visual Studio's:
+- **Create Git Repository** for a project that isn't in one yet.
+- A commit box with **Commit All** and **Commit All and Push**. Committing saves first, so the commit matches what you see.
+- **Pull** (fast-forward only), **Push** (sets the upstream on the first push) and **Add remote** to connect GitHub or another host.
+- A list of changed files shown by chapter name. Double-click one for a **word diff** against the last commit (`[-old-]{+new+}`, coloured), which is far more readable for prose than line diffs.
+- The recent history.
+
+It uses the Git for Windows command line, and Git Credential Manager handles sign-in for push and pull.
+
 ## Plugins: Harper
 
 **Tools > Plugins** turns on [Harper](https://github.com/Automattic/harper), Automattic's open-source grammar checker. WritingIDE runs Harper's language server, `harper-ls`, on your computer (text never leaves it) and adds its findings to the Error List and squiggles under rule ID `HARPER`. Harper's quick fixes appear in Ctrl+. like the built-in ones.
@@ -105,6 +125,11 @@ Block types are `NOVEL` or `SERIES` (with a multi-line `Notes:` field for the bi
 | NW3005 | Redundant phrases ("nodded his head", "in order to") | Message |
 | NW3006 | Adverbs in dialogue tags ("she said quietly") | Message |
 | NW4001 | Story element written in the wrong case ("elena" for "Elena") | Warning |
+| NW4002 | A misspelled story element name ("Rowen" for "Rowan"), with the fix | Warning |
+| NW4003 | Eye or hair colour next to a character's name that contradicts their description or attributes | Warning |
+| NW4004 | An age next to a character's name ("Rowan, forty-one,") that contradicts their Age attribute | Warning |
+| NW4005 | A possessive pronoun in a self-directed gesture ("Wren tossed his hair") that contradicts their Pronouns attribute | Warning |
+| NW4006 | A character who acts or speaks after the chapter named in their Died attribute (`Died: Chapter 12`); quoted dialogue and memories are ignored | Warning |
 | HARPER | Findings from the Harper plugin, when enabled (spelling counts as an error) | Warning |
 
 To add a rule, derive from `GrammarRule` (or `PatternRule` for phrase tables) and add it to `GrammarEngine.Rules`.

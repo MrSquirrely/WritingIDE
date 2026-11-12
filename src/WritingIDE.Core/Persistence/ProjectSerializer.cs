@@ -21,7 +21,16 @@ public static class ProjectSerializer {
         ProjectFileDto dto = JsonSerializer.Deserialize<ProjectFileDto>(json, JsonOptions)
             ?? throw new InvalidDataException("The project file is empty or invalid.");
         string directory = Path.GetDirectoryName(filePath) ?? "";
+        NovelProject project = FromDto(dto, filePath, chapterDto => {
+            string chapterPath = Path.Combine(directory, chapterDto.File);
+            return File.Exists(chapterPath) ? File.ReadAllText(chapterPath) : "";
+        });
+        project.IsDirty = false;
+        return project;
+    }
 
+    /// <summary>Builds a project from its file contents; <paramref name="getText"/> supplies each chapter's text.</summary>
+    internal static NovelProject FromDto(ProjectFileDto dto, string filePath, Func<ChapterDto, string> getText) {
         NovelProject project = new() {
             FilePath = filePath,
             Name = dto.Name,
@@ -36,14 +45,13 @@ public static class ProjectSerializer {
             project.Books.Add(new Book(bookDto.Title) { Id = bookDto.Id, Synopsis = bookDto.Synopsis });
         }
         foreach (ChapterDto chapterDto in dto.Chapters) {
-            string chapterPath = Path.Combine(directory, chapterDto.File);
             project.Chapters.Add(new Chapter(chapterDto.Title) {
                 Id = chapterDto.Id,
                 BookId = chapterDto.BookId,
                 FileName = chapterDto.File,
                 Synopsis = chapterDto.Synopsis,
                 Status = chapterDto.Status,
-                Text = File.Exists(chapterPath) ? File.ReadAllText(chapterPath) : ""
+                Text = getText(chapterDto)
             });
         }
         foreach (EntityDto entityDto in dto.Entities) {
@@ -64,10 +72,8 @@ public static class ProjectSerializer {
         foreach (string rule in dto.DisabledRules) {
             project.DisabledRules.Add(rule);
         }
-        project.IsDirty = false;
         return project;
     }
-
     public static void Save(NovelProject project) {
         if (string.IsNullOrEmpty(project.FilePath)) {
             throw new InvalidOperationException("The project has no file path.");
@@ -102,7 +108,14 @@ public static class ProjectSerializer {
         }
         project.RemovedChapterFiles.Clear();
 
-        ProjectFileDto dto = new() {
+        ProjectFileDto dto = ToDto(project, null);
+        File.WriteAllText(project.FilePath, JsonSerializer.Serialize(dto, JsonOptions), Encoding.UTF8);
+        project.IsDirty = false;
+    }
+
+    /// <summary>The project file contents. With <paramref name="getText"/>, chapter text is embedded (recovery snapshots).</summary>
+    internal static ProjectFileDto ToDto(NovelProject project, Func<Chapter, string>? getText) {
+        return new ProjectFileDto {
             Name = project.Name,
             Author = project.Author,
             Genre = project.Genre,
@@ -111,13 +124,14 @@ public static class ProjectSerializer {
             Kind = project.Kind,
             Notes = project.Notes,
             Books = project.Books.Select(static book => new BookDto { Id = book.Id, Title = book.Title, Synopsis = book.Synopsis }).ToList(),
-            Chapters = project.Chapters.Select(static chapter => new ChapterDto {
+            Chapters = project.Chapters.Select(chapter => new ChapterDto {
                 Id = chapter.Id,
                 BookId = chapter.BookId,
                 Title = chapter.Title,
                 File = chapter.FileName,
                 Synopsis = chapter.Synopsis,
-                Status = chapter.Status
+                Status = chapter.Status,
+                Text = getText?.Invoke(chapter)
             }).ToList(),
             Entities = project.Entities.Select(static entity => new EntityDto {
                 Id = entity.Id,
@@ -131,8 +145,14 @@ public static class ProjectSerializer {
             Dictionary = project.CustomDictionary.ToList(),
             DisabledRules = project.DisabledRules.ToList()
         };
-        File.WriteAllText(project.FilePath, JsonSerializer.Serialize(dto, JsonOptions), Encoding.UTF8);
-        project.IsDirty = false;
+    }
+
+    internal static string Serialize<T>(T value) {
+        return JsonSerializer.Serialize(value, JsonOptions);
+    }
+
+    internal static T? Deserialize<T>(string json) {
+        return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
     /// <summary>Creates a new project folder (parent/name/name.novproj) from a template and saves it.</summary>
@@ -168,7 +188,7 @@ public static class ProjectSerializer {
         return sanitized.Length == 0 ? fallback : sanitized;
     }
 
-    private sealed class ProjectFileDto {
+    internal sealed class ProjectFileDto {
         public int FormatVersion { get; set; } = 2;
         public ProjectKind Kind { get; set; } = ProjectKind.Novel;
         public string Name { get; set; } = "";
@@ -184,22 +204,26 @@ public static class ProjectSerializer {
         public List<string> DisabledRules { get; set; } = [];
     }
 
-    private sealed class BookDto {
+    internal sealed class BookDto {
         public Guid Id { get; set; }
         public string Title { get; set; } = "";
         public string Synopsis { get; set; } = "";
     }
 
-    private sealed class ChapterDto {
+    internal sealed class ChapterDto {
         public Guid Id { get; set; }
         public Guid? BookId { get; set; }
         public string Title { get; set; } = "";
         public string File { get; set; } = "";
         public string Synopsis { get; set; } = "";
         public ChapterStatus Status { get; set; }
+
+        /// <summary>Only in recovery snapshots; normal project files keep chapter text in Manuscript/*.txt.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Text { get; set; }
     }
 
-    private sealed class EntityDto {
+    internal sealed class EntityDto {
         public Guid Id { get; set; }
         public EntityKind Kind { get; set; }
         public string Name { get; set; } = "";
@@ -209,7 +233,7 @@ public static class ProjectSerializer {
         public List<AttributeDto> Attributes { get; set; } = [];
     }
 
-    private sealed class AttributeDto {
+    internal sealed class AttributeDto {
         public string Key { get; set; } = "";
         public string Value { get; set; } = "";
     }

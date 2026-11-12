@@ -148,7 +148,7 @@
               <WrapPanel IsItemsHost="True" />
             </Border>
             <Border Background="{DynamicResource SurfaceBrush}">
-              <ContentPresenter ContentSource="SelectedContent" />
+              <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
             </Border>
           </DockPanel>
         </ControlTemplate>
@@ -193,7 +193,7 @@
             <Border DockPanel.Dock="Bottom" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
               <StackPanel Orientation="Horizontal" IsItemsHost="True" />
             </Border>
-            <ContentPresenter ContentSource="SelectedContent" />
+            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
           </DockPanel>
         </ControlTemplate>
       </Setter.Value>

@@ -38,7 +38,12 @@ public sealed class GrammarEngine(ISpellingProvider? spelling = null) {
         new ClicheRule(),
         new RedundancyRule(),
         new DialogueTagAdverbRule(),
-        new EntityCasingRule()
+        new EntityCasingRule(),
+        new NameTypoRule(),
+        new AppearanceContinuityRule(),
+        new AgeContinuityRule(),
+        new PronounContinuityRule(),
+        new DeathContinuityRule()
     ];
 
     public ISpellingProvider? Spelling { get; } = spelling;

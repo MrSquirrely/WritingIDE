@@ -162,7 +162,7 @@ public partial class PluginsDialog : HandyControl.Controls.Window {
             report.AppendLine($"Checked: {TestSentence}");
             report.AppendLine($"Harper found {lints.Count} issue(s) in {stopwatch.ElapsedMilliseconds} ms:");
             foreach (HarperLint lint in lints) {
-                string fixes = lint.Fixes.Count > 0 ? $"  → {string.Join(" | ", lint.Fixes.Take(3).Select(static fix => fix.Replacement))}" : "";
+                string fixes = lint.Fixes.Count > 0 ? $"  \u2192 {string.Join(" | ", lint.Fixes.Take(3).Select(static fix => fix.Replacement))}" : "";
                 report.AppendLine($"  '{TestSentence.Substring(lint.Offset, lint.Length)}': {lint.Message}{fixes}");
             }
             TestOutput.Text = report.ToString();

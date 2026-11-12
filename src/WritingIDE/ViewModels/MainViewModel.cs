@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -17,6 +18,7 @@ using WritingIDE.Core.Grammar;
 using WritingIDE.Core.Import;
 using WritingIDE.Core.Model;
 using WritingIDE.Core.Persistence;
+using WritingIDE.Core.Search;
 using WritingIDE.Core.Text;
 using WritingIDE.Infrastructure;
 using WritingIDE.Plugins;
@@ -32,6 +34,7 @@ public sealed class MainViewModel : ObservableObject {
     public const int ErrorListTab = 0;
     public const int OutputTab = 1;
     public const int FindResultsTab = 2;
+    public const int GitTab = 3;
 
     private readonly WindowsSpellingProvider _spelling = new();
     private readonly Dictionary<Guid, List<ErrorItem>> _diagnostics = new();
@@ -84,6 +87,8 @@ public sealed class MainViewModel : ObservableObject {
         OpenStoryBibleCommand = new RelayCommand(OpenStoryBible, () => HasProject);
         PluginsCommand = new RelayCommand(ShowPlugins);
         SetThemeCommand = new RelayCommand(parameter => Theme = AppTheme.Parse(parameter as string));
+        FindInFilesCommand = new RelayCommand(() => ShowFindAndReplace(replace: false), () => HasProject);
+        ReplaceInFilesCommand = new RelayCommand(() => ShowFindAndReplace(replace: true), () => HasProject);
         AppTheme.Changed += () => {
             OnPropertyChanged(nameof(Theme));
             OnPropertyChanged(nameof(IsSystemTheme));
@@ -95,6 +100,19 @@ public sealed class MainViewModel : ObservableObject {
         Harper = new HarperPlugin(Settings.Harper);
         Harper.Log += line => Application.Current?.Dispatcher.BeginInvoke(() => Log(line));
         Harper.StateChanged += () => Application.Current?.Dispatcher.BeginInvoke(OnPluginStateChanged);
+
+        _recoveryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(RecoveryIntervalSeconds) };
+        _recoveryTimer.Tick += (_, _) => WriteRecoverySnapshot();
+        _recoveryTimer.Start();
+        _autosaveTimer = new DispatcherTimer();
+        _autosaveTimer.Tick += (_, _) => {
+            if ((Project is not null) && IsProjectDirty) {
+                SaveAll(automatic: true);
+            }
+        };
+        ApplyAutosaveInterval();
+        SetAutosaveCommand = new RelayCommand(parameter => AutosaveMinutes = int.TryParse(parameter as string, out int minutes) ? minutes : 0);
+        Git = new GitViewModel(this);
 
         Log("WritingIDE ready.");
         if (Settings.Harper.Enabled) {
@@ -115,6 +133,87 @@ public sealed class MainViewModel : ObservableObject {
     public ICommand PluginsCommand { get; }
 
     public ICommand SetThemeCommand { get; }
+
+    public ICommand FindInFilesCommand { get; }
+
+    public ICommand ReplaceInFilesCommand { get; }
+
+    private FindReplaceDialog? _findDialog;
+
+    // =====================================================================
+    // Autosave and crash recovery
+    // =====================================================================
+
+    private const int RecoveryIntervalSeconds = 30;
+
+    private readonly DispatcherTimer _recoveryTimer;
+    private readonly DispatcherTimer _autosaveTimer;
+
+    public ICommand SetAutosaveCommand { get; }
+
+    /// <summary>Git Changes tool window.</summary>
+    public GitViewModel Git { get; }
+
+    /// <summary>Tools > Autosave: minutes between automatic saves to disk, 0 for off. Recovery snapshots run regardless.</summary>
+    public int AutosaveMinutes {
+        get => Settings.AutosaveMinutes;
+        set {
+            Settings.AutosaveMinutes = Math.Max(0, value);
+            Settings.Save();
+            ApplyAutosaveInterval();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AutosaveLabel));
+            StatusText = value > 0 ? $"Autosave every {value} minute(s)" : "Autosave off (crash recovery stays on)";
+        }
+    }
+
+    public string AutosaveLabel => Settings.AutosaveMinutes > 0 ? $"every {Settings.AutosaveMinutes} min" : "off";
+
+    private void ApplyAutosaveInterval() {
+        _autosaveTimer.Stop();
+        if (Settings.AutosaveMinutes > 0) {
+            _autosaveTimer.Interval = TimeSpan.FromMinutes(Settings.AutosaveMinutes);
+            _autosaveTimer.Start();
+        }
+    }
+
+    /// <summary>
+    /// Writes a crash-recovery snapshot of unsaved work (project plus every chapter's current text). Called every
+    /// 30 seconds, on unhandled exceptions and when Windows shuts down. Never throws.
+    /// </summary>
+    public void WriteRecoverySnapshot() {
+        if ((Project is null) || !IsProjectDirty) {
+            return;
+        }
+        try {
+            RecoveryStore.Write(Project, GetChapterText);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException) {
+            Log($"warning: could not write the recovery snapshot: {exception.Message}");
+        }
+    }
+
+    /// <summary>Loads a project, first offering to recover unsaved work if WritingIDE did not close cleanly last time.</summary>
+    private NovelProject LoadWithRecovery(string path) {
+        RecoverySnapshot? snapshot = RecoveryStore.Find(path);
+        if (snapshot is not null) {
+            string when = snapshot.SavedAtUtc.ToLocalTime().ToString("f");
+            MessageBoxResult answer = HcMessageBox.Show(Application.Current.MainWindow!,
+                $"WritingIDE did not close normally while '{Path.GetFileNameWithoutExtension(path)}' had unsaved changes.\n\n" +
+                $"Recover the unsaved work from {when}?\n\n" +
+                "Yes: open the recovered version (review it, then Save to keep it).\nNo: discard it and open the last saved version.",
+                "Recover unsaved work", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer == MessageBoxResult.Yes) {
+                NovelProject recovered = RecoveryStore.Restore(snapshot);
+                Log($"Recovered unsaved work from {when}. Save to keep it.");
+                Notify("Recovered your unsaved work. Review it, then Save (Ctrl+S) to keep it.", NotificationKind.Success);
+                return recovered;
+            }
+            RecoveryStore.Delete(path);
+            Log("Discarded the recovery snapshot.");
+        }
+        return ProjectSerializer.Load(path);
+    }
 
     /// <summary>View > Theme: follow Windows, light or dark. Saved in the user settings and applied immediately.</summary>
     public ThemePreference Theme {
@@ -501,7 +600,7 @@ public sealed class MainViewModel : ObservableObject {
             return;
         }
         try {
-            LoadProject(ProjectSerializer.Load(path));
+            LoadProject(LoadWithRecovery(path));
         }
         catch (Exception exception) {
             ShowError($"Could not open '{path}'.\n\n{exception.Message}");
@@ -527,6 +626,7 @@ public sealed class MainViewModel : ObservableObject {
         UpdateProjectStatistics();
         RaiseProjectChanged();
         ShowStartPage();
+        Git.RequestRefresh();
         return true;
     }
 
@@ -544,6 +644,8 @@ public sealed class MainViewModel : ObservableObject {
             SaveAll();
         }
         if (Project is not null) {
+            // Saved, or the user chose not to: either way there is nothing left to recover.
+            RecoveryStore.Delete(Project.FilePath);
             Project.IsDirty = false;
         }
         foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
@@ -553,6 +655,11 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     public void SaveAll() {
+        SaveAll(automatic: false);
+    }
+
+    /// <summary>Saves the project and every chapter. Autosave passes <paramref name="automatic"/> to stay quiet.</summary>
+    public void SaveAll(bool automatic) {
         if (Project is null) {
             return;
         }
@@ -564,9 +671,16 @@ public sealed class MainViewModel : ObservableObject {
             foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
                 document.MarkSaved();
             }
-            StatusText = "Item(s) Saved";
-            Notify($"Saved '{Project.Name}'.", NotificationKind.Success);
-            Log($"Saved '{Project.Name}' ({Project.Chapters.Count} chapters, {Project.Entities.Count} story elements).");
+            RecoveryStore.Delete(Project.FilePath);
+            if (automatic) {
+                StatusText = $"Autosaved at {DateTime.Now:t}";
+            }
+            else {
+                StatusText = "Item(s) Saved";
+                Notify($"Saved '{Project.Name}'.", NotificationKind.Success);
+                Log($"Saved '{Project.Name}' ({Project.Chapters.Count} chapters, {Project.Entities.Count} story elements).");
+            }
+            Git.RequestRefresh();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
             ShowError($"Could not save the project.\n\n{exception.Message}");
@@ -600,6 +714,7 @@ public sealed class MainViewModel : ObservableObject {
         project.Entities.CollectionChanged += (_, _) => UpdateProjectStatistics();
 
         RecentProjects.Add(project.FilePath);
+        Git.RequestRefresh();
         Log($"Opened project '{project.Name}': {project.Chapters.Count} chapters, {project.Entities.Count} story elements.");
         RaiseProjectChanged();
         UpdateProjectStatistics();
@@ -662,6 +777,27 @@ public sealed class MainViewModel : ObservableObject {
         }
         ActiveDocument = document;
         return document;
+    }
+
+    /// <summary>The shared grammar options plus the chapter's place in reading order (for continuity checks).</summary>
+    public GrammarOptions GetGrammarOptions(Chapter chapter) {
+        return WithPosition(GrammarOptions, chapter);
+    }
+
+    private GrammarOptions WithPosition(GrammarOptions options, Chapter chapter) {
+        List<Chapter> ordered = OrderedChapters.ToList();
+        int index = ordered.IndexOf(chapter);
+        return index < 0 ? options : options with { Position = new ManuscriptPosition(index, ordered.Select(static c => c.Title).ToList()) };
+    }
+
+    /// <summary>Opens (or re-opens) a word diff in a document tab.</summary>
+    public void OpenDiff(string fileTitle, string description, string diff) {
+        foreach (DiffDocumentViewModel old in Documents.OfType<DiffDocumentViewModel>().Where(d => d.FileTitle == fileTitle).ToList()) {
+            RemoveDocument(old);
+        }
+        DiffDocumentViewModel document = new(this, fileTitle, description, diff);
+        Documents.Add(document);
+        ActiveDocument = document;
     }
 
     public void CloseDocument(DocumentViewModel? document) {
@@ -911,7 +1047,8 @@ public sealed class MainViewModel : ObservableObject {
                     // Open chapters are analyzed live, with plugins; don't overwrite their results.
                     continue;
                 }
-                AnalysisResult result = await Task.Run(() => Grammar.Analyze(text, options));
+                GrammarOptions chapterOptions = WithPosition(options, chapter);
+                AnalysisResult result = await Task.Run(() => Grammar.Analyze(text, chapterOptions));
                 if (Project != project) {
                     return;
                 }
@@ -995,6 +1132,117 @@ public sealed class MainViewModel : ObservableObject {
             DiagnosticSeverity.Warning => ShowWarnings,
             _ => ShowMessages
         }).ToList();
+    }
+
+    // =====================================================================
+    // Find and Replace in Files
+    // =====================================================================
+
+    public enum SearchScope {
+        EntireProject,
+        CurrentBook,
+        CurrentChapter
+    }
+
+    /// <summary>Chapters a search covers, in reading order.</summary>
+    public IReadOnlyList<Chapter> GetChaptersInScope(SearchScope scope) {
+        if (Project is null) {
+            return [];
+        }
+        Chapter? current = ActiveChapter?.Chapter;
+        return scope switch {
+            SearchScope.CurrentChapter => current is null ? [] : [current],
+            SearchScope.CurrentBook when Project.IsSeries && (current is not null) => OrderedChapters.Where(chapter => chapter.BookId == current.BookId).ToList(),
+            _ => OrderedChapters.ToList()
+        };
+    }
+
+    /// <summary>Find All: every match in scope goes to the Find Results window. Returns the number of matches.</summary>
+    public int FindInFiles(Regex regex, string pattern, SearchScope scope) {
+        References.Clear();
+        int chapters = 0;
+        foreach (Chapter chapter in GetChaptersInScope(scope)) {
+            string text = GetChapterText(chapter);
+            IReadOnlyList<SearchMatch> matches = ManuscriptSearch.Find(text, regex);
+            if (matches.Count == 0) {
+                continue;
+            }
+            chapters++;
+            LineIndex lines = new(text);
+            string displayName = Project!.GetDisplayName(chapter);
+            foreach (SearchMatch match in matches) {
+                (int line, int column) = lines.GetLocation(match.Offset);
+                References.Add(new ReferenceItem(chapter, match.Offset, match.Length, line, column, ManuscriptSearch.CreatePreview(text, match.Offset, match.Length)) { Document = displayName });
+            }
+        }
+        ReferencesHeader = References.Count == 0
+            ? $"Find '{pattern}': no matches."
+            : $"Find '{pattern}': {References.Count} match(es) in {chapters} chapter(s). Double-click a row to go there.";
+        SelectedBottomTab = FindResultsTab;
+        StatusText = ReferencesHeader;
+        return References.Count;
+    }
+
+    /// <summary>Plans Replace All without changing anything: (chapter, replacements) for every chapter with matches.</summary>
+    public IReadOnlyList<(Chapter Chapter, IReadOnlyList<SearchMatch> Plan)> PlanReplaceInFiles(Regex regex, string replacement, bool useRegex, SearchScope scope) {
+        List<(Chapter, IReadOnlyList<SearchMatch>)> plans = [];
+        foreach (Chapter chapter in GetChaptersInScope(scope)) {
+            IReadOnlyList<SearchMatch> plan = ManuscriptSearch.PlanReplacements(GetChapterText(chapter), regex, replacement, useRegex);
+            if (plan.Count > 0) {
+                plans.Add((chapter, plan));
+            }
+        }
+        return plans;
+    }
+
+    /// <summary>
+    /// Replace All. Open chapters are edited through their editor in one undo step (Ctrl+Z reverts it there);
+    /// closed chapters are updated in memory and saved with the project.
+    /// </summary>
+    public int ApplyReplaceInFiles(IReadOnlyList<(Chapter Chapter, IReadOnlyList<SearchMatch> Plan)> plans, string pattern, string replacement) {
+        int total = 0;
+        foreach ((Chapter chapter, IReadOnlyList<SearchMatch> plan) in plans) {
+            ChapterDocumentViewModel? document = Documents.OfType<ChapterDocumentViewModel>().FirstOrDefault(d => d.Chapter == chapter);
+            if (document is not null) {
+                document.Document.BeginUpdate();
+                try {
+                    foreach (SearchMatch match in plan.OrderByDescending(static match => match.Offset)) {
+                        document.Document.Replace(match.Offset, match.Length, match.Replacement);
+                    }
+                }
+                finally {
+                    document.Document.EndUpdate();
+                }
+            }
+            else {
+                chapter.Text = ManuscriptSearch.Apply(chapter.Text, plan);
+                Project!.MarkDirty();
+            }
+            total += plan.Count;
+        }
+        References.Clear();
+        ReferencesHeader = $"Replaced '{pattern}' with '{replacement}': {total} occurrence(s) in {plans.Count} chapter(s).";
+        Log(ReferencesHeader);
+        Notify(ReferencesHeader, NotificationKind.Success);
+        StatusText = ReferencesHeader;
+        RaiseTitleChanged();
+        ReanalyzeOpenDocuments();
+        return total;
+    }
+
+    public void ShowFindAndReplace(bool replace) {
+        if (Project is null) {
+            return;
+        }
+        string? selection = ActiveChapter?.Editor?.SelectedText;
+        if ((selection is not null) && (selection.Contains('\n') || (selection.Length > 100))) {
+            selection = null;
+        }
+        if ((_findDialog is null) || !_findDialog.IsLoaded) {
+            _findDialog = new FindReplaceDialog(this) { Owner = Application.Current.MainWindow };
+            _findDialog.Show();
+        }
+        _findDialog.Prepare(selection, replace);
     }
 
     public void FindReferences(StoryEntity entity) {

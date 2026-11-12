@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -146,7 +147,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
 
         string text = Document.Text;
         ITextSourceVersion version = Document.Version;
-        GrammarOptions options = Shell.GrammarOptions;
+        GrammarOptions options = Shell.GetGrammarOptions(Chapter);
         GrammarEngine engine = Shell.Grammar;
         Chapter.Text = text;
         try {
@@ -298,6 +299,46 @@ public sealed class StoryBibleDocumentViewModel : DocumentViewModel {
 
     protected override FrameworkElement CreateView() {
         return new StoryBibleView { DataContext = this };
+    }
+}
+
+/// <summary>A read-only word diff of a file against the last commit (from Git Changes).</summary>
+public sealed class DiffDocumentViewModel(MainViewModel shell, string fileTitle, string description, string diff) : DocumentViewModel(shell) {
+    public string FileTitle { get; } = fileTitle;
+
+    public override string Title => $"Diff: {FileTitle}";
+
+    public override string ToolTip => $"{FileTitle}: {description} (compared with the last commit)";
+
+    public override string Glyph => "\uE8CB";
+
+    public override Brush GlyphBrush => Visuals.MessageBrush;
+
+    protected override FrameworkElement CreateView() {
+        ICSharpCode.AvalonEdit.TextEditor editor = new() {
+            IsReadOnly = true,
+            WordWrap = true,
+            ShowLineNumbers = false,
+            FontFamily = new FontFamily("Cambria, Georgia"),
+            FontSize = 15,
+            Padding = new Thickness(16, 8, 16, 8),
+            Text = Clean(diff)
+        };
+        editor.SetResourceReference(Control.BackgroundProperty, "EditorBackgroundBrush");
+        editor.SetResourceReference(Control.ForegroundProperty, "EditorForegroundBrush");
+        editor.TextArea.TextView.LineTransformers.Add(new DiffColorizer());
+        return editor;
+    }
+
+    /// <summary>Drops git's file headers; keeps hunks. An empty diff gets an explanation instead.</summary>
+    private static string Clean(string diff) {
+        List<string> lines = diff.Replace("\r\n", "\n").Split('\n').ToList();
+        int firstHunk = lines.FindIndex(static line => line.StartsWith("@@", StringComparison.Ordinal));
+        if (firstHunk > 0) {
+            lines.RemoveRange(0, firstHunk);
+        }
+        string text = string.Join(Environment.NewLine, lines).Trim();
+        return text.Length == 0 ? "No differences from the last commit (the change may be only in line endings or file mode)." : text;
     }
 }
 

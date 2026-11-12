@@ -228,6 +228,22 @@ public partial class MainWindow : HandyControl.Controls.Window {
         }
     }
 
+    private void OnGitChangeDoubleClick(object sender, MouseButtonEventArgs e) {
+        if (((ListBox)sender).SelectedItem is GitChangeItem item) {
+            _viewModel.Git.OpenDiffCommand.Execute(item);
+        }
+    }
+
+    private void OnGitStatusClicked(object sender, MouseButtonEventArgs e) {
+        _viewModel.SelectedBottomTab = MainViewModel.GitTab;
+    }
+
+    /// <summary>Coming back from another app (a terminal, GitHub Desktop) may have changed the repository.</summary>
+    protected override void OnActivated(EventArgs e) {
+        base.OnActivated(e);
+        _viewModel.Git.RequestRefresh();
+    }
+
     private void OnReferenceDoubleClick(object sender, MouseButtonEventArgs e) {
         if (((DataGrid)sender).SelectedItem is ReferenceItem item) {
             _viewModel.NavigateToReferenceCommand.Execute(item);

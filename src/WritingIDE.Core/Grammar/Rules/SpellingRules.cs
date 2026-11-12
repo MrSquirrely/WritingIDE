@@ -21,6 +21,10 @@ public sealed class SpellingRule() : GrammarRule("NW1001", "Spelling", RuleCateg
             if (context.IsKnownWord(word) || word.Any(char.IsDigit)) {
                 continue;
             }
+            // A near-miss of a story element name ("Rowen") is reported once, by NW4002, with the right fix.
+            if (!context.Options.DisabledRules.Contains("NW4002") && (context.FindSimilarName(word) is not null)) {
+                continue;
+            }
             List<string> suggestions = [];
             if (issue.Replacement is not null) {
                 suggestions.Add(issue.Replacement);

@@ -294,7 +294,7 @@ public sealed class HarperPlugin : ObservableObject, IDisposable {
         _client = null;
     }
 
-    /// <summary>LSP positions (line, UTF-16 character) ↔ string offsets. Lines end at \n, \r\n or \r.</summary>
+    /// <summary>LSP positions (line, UTF-16 character) \u2194 string offsets. Lines end at \n, \r\n or \r.</summary>
     internal sealed class LineMap {
         private readonly List<int> _starts = [0];
         private readonly int _length;

@@ -8,6 +8,9 @@ public sealed class AppSettings {
 
     public HarperSettings Harper { get; set; } = new();
 
+    /// <summary>Minutes between automatic saves to disk; 0 turns autosave off (crash recovery snapshots always run).</summary>
+    public int AutosaveMinutes { get; set; }
+
     /// <summary>System (follow Windows), Light or Dark.</summary>
     public string Theme { get; set; } = "System";
 

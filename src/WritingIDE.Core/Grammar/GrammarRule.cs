@@ -7,6 +7,7 @@ public static class RuleCategory {
     public const string Punctuation = "Punctuation";
     public const string Style = "Style";
     public const string Story = "Story";
+    public const string Continuity = "Continuity";
 }
 
 /// <summary>Base class for grammar rules ("analyzers").</summary>

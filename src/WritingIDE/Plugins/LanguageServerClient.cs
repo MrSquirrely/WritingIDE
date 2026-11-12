@@ -36,7 +36,7 @@ public sealed class LanguageServerClient : IDisposable {
 
     public bool IsRunning => !_disposed && !_process.HasExited;
 
-    /// <param name="handleServerRequest">Answers requests the server sends to the client (method, params) → result.</param>
+    /// <param name="handleServerRequest">Answers requests the server sends to the client (method, params) \u2192 result.</param>
     public static LanguageServerClient Start(string executable, string arguments, Func<string, JsonNode?, JsonNode?> handleServerRequest) {
         ProcessStartInfo startInfo = new(executable, arguments) {
             RedirectStandardInput = true,
