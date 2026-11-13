@@ -1521,7 +1521,7 @@ public sealed partial class MainViewModel : ObservableObject {
         if (Project is null) {
             return;
         }
-        ImportDialog dialog = new(Project) { Owner = Application.Current.MainWindow };
+        ImportDialog dialog = new(Project, Ai) { Owner = Application.Current.MainWindow };
         if ((dialog.ShowDialog() == true) && (dialog.Document is not null)) {
             ApplyImport(dialog.Document, dialog.Options);
         }

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 using WritingIDE.Core.Model;
 
@@ -15,8 +16,17 @@ public enum ImportPromptMode {
     ConvertMyText,
 
     /// <summary>Develop new material from a story idea.</summary>
-    DevelopMyIdea
+    DevelopMyIdea,
+
+    /// <summary>
+    /// Combine several manuscripts and story bibles into one series: one Series Bible, one block per story element
+    /// (merged across every source) and one book per manuscript.
+    /// </summary>
+    CombineSeries
 }
+
+/// <summary>A file added to the prompt as material, labelled with its name so the AI can tell the sources apart.</summary>
+public sealed record ImportSource(string Name, string Text);
 
 public sealed record ImportPromptOptions(
     ImportPromptMode Mode,
@@ -36,22 +46,33 @@ public sealed record ImportPromptOptions(
 
     /// <summary>Bible mode: copy the bible's premise, tone, themes and world rules into the story notes.</summary>
     public bool IncludeStoryNotes { get; init; } = true;
+
+    /// <summary>Files included in the prompt after <see cref="Material"/>, each under its own label.</summary>
+    public IReadOnlyList<ImportSource> Sources { get; init; } = [];
 }
 
 /// <summary>Builds a prompt the user can give to any AI chat so it answers in the WritingIDE import format.</summary>
-public static class ImportPrompt {
+public static partial class ImportPrompt {
     public const string MaterialPlaceholder = "[PASTE YOUR DRAFT, NOTES OR STORY IDEA HERE]";
 
+    /// <summary>What to answer when a reply ends with the CONTINUE marker.</summary>
+    public const string ContinueReply = "continue";
+
     public static string Build(ImportPromptOptions options) {
+        if (options.Mode == ImportPromptMode.CombineSeries) {
+            // Combining is always a series with chapters and a Series Bible.
+            options = options with { IsSeries = true, IncludeChapters = true, IncludeStoryNotes = true };
+        }
+        bool combine = options.Mode == ImportPromptMode.CombineSeries;
         StringBuilder prompt = new();
         List<EntityKindInfo> kinds = EntityKindInfo.All.Where(info => options.Kinds.Contains(info.Kind)).ToList();
         string elementList = string.Join(", ", kinds.Select(static info => info.PluralName.ToLowerInvariant()));
         bool chapters = options.IncludeChapters || (options.Mode == ImportPromptMode.ConvertManuscript);
-        bool hasMaterial = !string.IsNullOrWhiteSpace(options.Material);
+        bool hasMaterial = !string.IsNullOrWhiteSpace(options.Material) || (options.Sources.Count > 0);
         string projectWord = options.IsSeries ? "SERIES" : "NOVEL";
 
         List<string> types = [];
-        if ((options.Mode == ImportPromptMode.ConvertBible) && options.IncludeStoryNotes) {
+        if (((options.Mode == ImportPromptMode.ConvertBible) && options.IncludeStoryNotes) || combine) {
             types.Add(projectWord);
         }
         types.AddRange(kinds.Select(static info => info.DisplayName.ToUpperInvariant()));
@@ -98,6 +119,9 @@ public static class ImportPrompt {
         if (chapters && options.IsSeries) {
             prompt.AppendLine("BOOK blocks start a book of the series. Every CHAPTER block belongs to the most recent BOOK block above it.");
             prompt.AppendLine("- Synopsis: one or two sentences. Optional.");
+            if (combine) {
+                prompt.AppendLine("- Notes: on its own line, then what the bibles say about this book only: its plot plan, arc, reveals and open threads. Optional; Notes must be the last field of the block.");
+            }
             if (options.ExistingBooks.Count > 0) {
                 prompt.AppendLine($"- Books that already exist (reuse these exact titles): {string.Join("; ", options.ExistingBooks)}.");
             }
@@ -146,9 +170,21 @@ public static class ImportPrompt {
                 ImportPromptMode.ConvertBible => "MY STORY BIBLE",
                 ImportPromptMode.ConvertManuscript => "MY MANUSCRIPT",
                 ImportPromptMode.DevelopMyIdea => "MY STORY IDEA",
+                ImportPromptMode.CombineSeries => "MY SERIES MATERIAL",
                 _ => "MY MATERIAL"
             });
-            prompt.Append(options.Material.Trim());
+            if (!string.IsNullOrWhiteSpace(options.Material)) {
+                prompt.AppendLine(options.Material.Trim());
+            }
+            for (int index = 0; index < options.Sources.Count; index++) {
+                ImportSource source = options.Sources[index];
+                prompt.AppendLine();
+                prompt.AppendLine($"----- SOURCE {index + 1}: {source.Name} -----");
+                prompt.AppendLine(source.Text.Trim());
+            }
+        }
+        else if (combine) {
+            prompt.Append("Use every manuscript and story bible from earlier in this conversation, and any files I attached, from first page to last.");
         }
         else if (options.Mode is ImportPromptMode.ConvertMyText or ImportPromptMode.DevelopMyIdea) {
             prompt.AppendLine(options.Mode == ImportPromptMode.DevelopMyIdea ? "MY STORY IDEA" : "MY MATERIAL");
@@ -162,8 +198,33 @@ public static class ImportPrompt {
         return prompt.ToString().TrimEnd();
     }
 
+    /// <summary>True when a reply stops with the CONTINUE marker, so the AI has more to send.</summary>
+    public static bool AsksToContinue(string reply) {
+        string? last = reply.Replace("\r\n", "\n").Split('\n').Select(static line => line.Trim())
+            .LastOrDefault(static line => (line.Length > 0) && !line.StartsWith("```", StringComparison.Ordinal));
+        return (last is not null) && ContinueMarker().IsMatch(last);
+    }
+
+    /// <summary>
+    /// Joins the parts of a reply that came in several messages: drops the CONTINUE marker between parts (the last part
+    /// keeps its own, if it has one) and any Markdown code fences the AI wrapped a part in.
+    /// </summary>
+    public static string JoinParts(IReadOnlyList<string> parts) {
+        List<string> cleaned = [];
+        for (int index = 0; index < parts.Count; index++) {
+            List<string> lines = parts[index].Replace("\r\n", "\n").Split('\n')
+                .Where(static line => !line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+                .ToList();
+            if (index < parts.Count - 1) {
+                lines.RemoveAll(static line => ContinueMarker().IsMatch(line.Trim()));
+            }
+            cleaned.Add(string.Join(Environment.NewLine, lines).Trim());
+        }
+        return string.Join(Environment.NewLine + Environment.NewLine, cleaned.Where(static part => part.Length > 0));
+    }
+
     private static bool IsLong(ImportPromptMode mode) {
-        return mode is ImportPromptMode.ConvertManuscript or ImportPromptMode.ConvertBible or ImportPromptMode.ConvertMyText;
+        return mode is ImportPromptMode.ConvertManuscript or ImportPromptMode.ConvertBible or ImportPromptMode.ConvertMyText or ImportPromptMode.CombineSeries;
     }
 
     private static string BuildTask(ImportPromptOptions options, string elementList, bool chapters, bool hasMaterial, string projectWord) {
@@ -200,6 +261,13 @@ public static class ImportPrompt {
                     task.Append($" Extract the {elementList} that appear in it, using only details the text gives or clearly implies.");
                 }
                 break;
+            case ImportPromptMode.CombineSeries:
+                task.Append($"Combine all of my series material into one WritingIDE import: {(hasMaterial ? "every manuscript and story bible below" : "every manuscript and story bible in this conversation")}. They all belong to one series, which I am importing as a series.");
+                task.Append($" Merge the bibles into a single {projectWord} block and one block per story element, then give each book its own BOOK block followed by its chapters.");
+                if (elementList.Length > 0) {
+                    task.Append($" Story elements to include: {elementList}.");
+                }
+                break;
             default:
                 task.Append("Develop my story idea into the WritingIDE import format.");
                 if (elementList.Length > 0) {
@@ -226,6 +294,18 @@ public static class ImportPrompt {
                 break;
             case ImportPromptMode.ConvertMyText:
                 yield return "Do not invent facts that are not in my material.";
+                break;
+            case ImportPromptMode.CombineSeries:
+                yield return "Merge, never repeat: when several bibles or books describe the same character, place or thing, write ONE block for it that combines every detail from every source. Match variant spellings, nicknames and titles; use the most common spelling as the Name and list the others in Aliases.";
+                yield return "When sources disagree about a fact, use the version from the latest book in reading order and keep the other in that block's Notes on a line starting with \"Conflict:\" that names both sources.";
+                yield return "Give every character, place and item a \"First appears\" attribute naming the book it first appears in.";
+                yield return "The SERIES block's Notes hold what is true for the whole series (premise, tone, themes, world rules, the series arc), merged from every bible with repeated passages written once. What a bible says about one book only goes into that BOOK block's Notes.";
+                yield return "Order the books in series reading order and use their real titles; when a source gives no title, use \"Book 1\", \"Book 2\" and so on.";
+                yield return "Manuscript chapters keep their text exactly as written: do not rewrite, shorten, summarise, correct or skip a single sentence. Remove only Markdown heading lines, which become the CHAPTER header instead.";
+                yield return "A book that exists only as a plan in a bible gets CHAPTER blocks with Status: Outline whose text lists the planned beats. Never turn bible text into chapter prose, and never copy chapter prose into Notes.";
+                if (options.Sources.Count > 0) {
+                    yield return "Each source below starts with a \"----- SOURCE n: name -----\" line. Use the names and contents to tell manuscripts from bibles and to put the books in order.";
+                }
                 break;
         }
         if (chapters && !options.IsSeries) {
@@ -289,6 +369,11 @@ public static class ImportPrompt {
                 example.AppendLine("Synopsis: Book one of the Greyhaven series.");
                 example.AppendLine();
             }
+            if (options.Mode == ImportPromptMode.CombineSeries) {
+                example.AppendLine("Notes:");
+                example.AppendLine("Elena's year at the light; the compass is found and the storm's secret is half told.");
+                example.AppendLine();
+            }
             bool outline = (options.Mode == ImportPromptMode.ConvertBible) && options.IncludeOutlineChapters;
             example.AppendLine("=== CHAPTER: Chapter 1 - The Light ===");
             example.AppendLine("Synopsis: Elena finds a strange compass on the anniversary of the storm.");
@@ -304,7 +389,22 @@ public static class ImportPrompt {
                 example.AppendLine();
                 example.AppendLine("\"Who's there?\" she whispered.");
             }
+            if (options.Mode == ImportPromptMode.CombineSeries) {
+                example.AppendLine();
+                example.AppendLine("=== BOOK: The Drowned Bell ===");
+                example.AppendLine("Synopsis: Book two: the Guild's bell rings under the sea.");
+                example.AppendLine("Notes:");
+                example.AppendLine("Only planned so far. Reveal: the Guild cast the bell.");
+                example.AppendLine();
+                example.AppendLine("=== CHAPTER: Chapter 1 - Low Tide ===");
+                example.AppendLine("Status: Outline");
+                example.AppendLine("---");
+                example.AppendLine("Beat 1: Elena hears a bell where no church stands.");
+            }
         }
         return example.ToString().TrimEnd();
     }
+
+    [GeneratedRegex(@"^(?:=+|#+)?\s*CONTINUE\s*(?:=+)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex ContinueMarker();
 }

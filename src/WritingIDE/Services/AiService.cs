@@ -34,6 +34,9 @@ public sealed class AiService : ObservableObject {
 
     private AiSettings Settings => _shell.Settings.Ai;
 
+    /// <summary>The window in front (the Import dialog, when it asks), so prompts are not hidden behind a modal dialog.</summary>
+    private static Window ActiveWindow => Application.Current.Windows.OfType<Window>().FirstOrDefault(static window => window.IsActive) ?? Application.Current.MainWindow!;
+
     public bool IsBusy {
         get;
         private set {
@@ -69,7 +72,7 @@ public sealed class AiService : ObservableObject {
     }
 
     public void ShowSettings() {
-        AiSettingsDialog dialog = new(_shell) { Owner = Application.Current.MainWindow };
+        AiSettingsDialog dialog = new(_shell) { Owner = ActiveWindow };
         dialog.ShowDialog();
         OnPropertyChanged(nameof(ProviderName));
     }
@@ -87,7 +90,7 @@ public sealed class AiService : ObservableObject {
             return null;
         }
         if ((Settings.Provider != AiProviderKind.Ollama) && !Settings.Consented.Contains(Settings.Provider)) {
-            MessageBoxResult answer = HcMessageBox.Show(Application.Current.MainWindow!,
+            MessageBoxResult answer = HcMessageBox.Show(ActiveWindow,
                 $"{what} sends text from your manuscript (and story elements) to {info.DisplayName} over the internet. Free tiers may use what you send to improve their models; check the provider's terms.\n\nContinue, and don't ask again for {info.DisplayName}?\n(Ollama keeps everything on this PC.)",
                 "Send text to an AI provider", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (answer != MessageBoxResult.Yes) {

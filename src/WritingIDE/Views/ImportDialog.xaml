@@ -13,7 +13,7 @@
           <Button x:Name="ImportButton" Style="{StaticResource PrimaryDialogButton}" Content="Import" IsDefault="True" IsEnabled="False" Click="OnImport" />
           <Button Style="{StaticResource DialogButton}" Content="Cancel" IsCancel="True" />
         </StackPanel>
-        <StackPanel Orientation="Horizontal">
+        <WrapPanel>
           <TextBlock Text="If an item already exists:" VerticalAlignment="Center" Margin="0,0,8,0" />
           <ComboBox x:Name="ConflictBox" Width="270" SelectedIndex="0" SelectionChanged="OnConflictModeChanged" HorizontalAlignment="Left">
             <ComboBoxItem Content="Update it (merge details, replace text)" />
@@ -24,10 +24,10 @@
             <TextBlock Text="Chapters without a book go into:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox x:Name="TargetBookBox" Width="200" DisplayMemberPath="Title" SelectionChanged="OnConflictModeChanged" />
           </StackPanel>
-          <CheckBox x:Name="ConvertCheck" Margin="16,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" Checked="OnConvertChanged" Unchecked="OnConvertChanged" />
-          <CheckBox x:Name="OutlineCheck" Margin="16,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" IsChecked="True" Checked="OnConvertChanged" Unchecked="OnConvertChanged"
+          <CheckBox x:Name="ConvertCheck" Margin="16,4,0,4" VerticalAlignment="Center" Visibility="Collapsed" Checked="OnConvertChanged" Unchecked="OnConvertChanged" />
+          <CheckBox x:Name="OutlineCheck" Margin="16,4,0,4" VerticalAlignment="Center" Visibility="Collapsed" IsChecked="True" Checked="OnConvertChanged" Unchecked="OnConvertChanged"
                     ToolTip="Planned chapters (Status: Outline) become chapter-plan notes in the Story/Series Bible instead of chapters in the manuscript" />
-        </StackPanel>
+        </WrapPanel>
       </DockPanel>
     </Border>
 
@@ -54,6 +54,9 @@
               <RadioButton x:Name="ManuscriptRadio" GroupName="Mode" HorizontalAlignment="Left" Margin="0,0,0,2"
                            Content="Convert a manuscript the AI wrote in the chat" Checked="OnOptionChanged" />
               <TextBlock Text="Every chapter, word for word, plus the characters and places in it. Long books come in parts." Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,8" />
+              <RadioButton x:Name="CombineRadio" GroupName="Mode" HorizontalAlignment="Left" Margin="0,0,0,2"
+                           Content="Combine a whole series (several manuscripts and bibles)" Checked="OnOptionChanged" />
+              <TextBlock Text="Merges every bible into one Series Bible and one entry per character, place and thing; each manuscript becomes a book. Imports as a series." Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="22,0,0,8" />
               <RadioButton x:Name="ConvertRadio" GroupName="Mode" HorizontalAlignment="Left" Margin="0,0,0,6"
                            Content="Convert my own draft or notes (pasted below)" Checked="OnOptionChanged" />
               <RadioButton x:Name="DevelopRadio" GroupName="Mode" HorizontalAlignment="Left"
@@ -71,6 +74,30 @@
                 <hc:NumericUpDown x:Name="ChapterCountBox" Minimum="1" Maximum="60" Value="3" Width="110" HorizontalAlignment="Left" />
               </DockPanel>
 
+              <StackPanel x:Name="SourcesPanel" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource FormLabel}" Text="Manuscripts and bibles" Margin="0,16,0,4" />
+                <TextBlock Text="Add each book's manuscript and every bible (.txt, .md or .docx). They go into the prompt, labelled with their file names. Leave empty if they are already in your AI chat."
+                           Foreground="{DynamicResource SubtleTextBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6" />
+                <ListBox x:Name="SourcesList" Height="110" BorderBrush="{DynamicResource BorderBrush}" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Source files"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <DockPanel ToolTip="{Binding Path}">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding WordsText}" Foreground="{DynamicResource SubtleTextBrush}" Margin="8,0,0,0" />
+                        <TextBlock Text="{Binding Source.Name}" TextTrimming="CharacterEllipsis" />
+                      </DockPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <DockPanel Margin="0,6,0,0">
+                  <TextBlock x:Name="SourcesTotal" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" />
+                  <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource DialogButton}" Margin="0,0,8,0" Content="Add files..." AutomationProperties.Name="Add files" Click="OnAddSources" />
+                    <Button Style="{StaticResource DialogButton}" Margin="0" Content="Remove" AutomationProperties.Name="Remove file" Click="OnRemoveSource" />
+                  </StackPanel>
+                </DockPanel>
+              </StackPanel>
+
               <TextBlock x:Name="MaterialLabel" Style="{StaticResource FormLabel}" Text="Your material (optional)" Margin="0,16,0,4" />
               <TextBox x:Name="MaterialBox" Style="{StaticResource FormTextBox}" Height="150" TextWrapping="Wrap" AcceptsReturn="True"
                        VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" TextChanged="OnOptionChanged" />
@@ -83,6 +110,13 @@
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <TextBlock x:Name="CopyStatus" VerticalAlignment="Center" Foreground="{DynamicResource SuccessBrush}" Margin="0,0,10,0" />
                 <Button Style="{StaticResource DialogButton}" Content="Save as .txt..." Click="OnSavePrompt" />
+                <Button x:Name="SendButton" Style="{StaticResource DialogButton}" Click="OnSendToAi" AutomationProperties.Name="Send to AI">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE724;" Margin="0,0,6,0" />
+                    <TextBlock x:Name="SendLabel" Text="Send to AI" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="StopButton" Style="{StaticResource DialogButton}" Content="Stop after this part" Visibility="Collapsed" Click="OnStopAi" />
                 <Button Style="{StaticResource PrimaryDialogButton}" Click="OnCopyPrompt">
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Style="{StaticResource Glyph}" Text="&#xE8C8;" Margin="0,0,6,0" />
@@ -92,6 +126,7 @@
               </StackPanel>
               <TextBlock Text="Prompt" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
             </DockPanel>
+            <TextBlock x:Name="AiStatus" DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,0,0,6" Visibility="Collapsed" />
             <Border DockPanel.Dock="Bottom" Background="{DynamicResource InfoPanelBrush}" BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1" Padding="10,8" Margin="0,8,0,0">
               <DockPanel>
                 <Button DockPanel.Dock="Right" Style="{StaticResource DialogButton}" Content="Next: paste the reply" Click="OnNextStep" />

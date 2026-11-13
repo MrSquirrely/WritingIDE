@@ -48,6 +48,10 @@ public static class ImportApplier {
                 }
             }
         }
+        // A book's own bible material goes into the Series Bible under the book's title.
+        foreach (ImportedBook imported in document.Books.Where(static book => book.Notes.Length > 0)) {
+            notesUpdated |= MergeNotes(project, $"Book: {imported.Title}{Environment.NewLine}{imported.Notes}");
+        }
         Book? defaultBook = !project.IsSeries ? null
             : (options.DefaultBook is not null) && project.Books.Contains(options.DefaultBook) ? options.DefaultBook
             : project.Books.LastOrDefault();

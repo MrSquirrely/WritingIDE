@@ -12,7 +12,10 @@ public sealed record ImportedNovelInfo(string? Title, string? Author, string? Ge
 }
 
 /// <summary>A BOOK block. Chapter blocks that follow it belong to it.</summary>
-public sealed record ImportedBook(string Title, string Synopsis);
+public sealed record ImportedBook(string Title, string Synopsis) {
+    /// <summary>What the bibles say about this book alone (its plan, arc, reveals); added to the Series Bible notes.</summary>
+    public string Notes { get; init; } = "";
+}
 
 public sealed record ImportedChapter(string Title, string Synopsis, ChapterStatus? Status, string Text) {
     /// <summary>Title of the BOOK block this chapter follows, if any.</summary>

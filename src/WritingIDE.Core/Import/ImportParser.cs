@@ -256,13 +256,44 @@ public static partial class ImportParser {
             return null;
         }
         string synopsis = "";
+        StringBuilder notes = new();
+        bool inNotes = false;
         foreach (string line in block.Lines) {
-            if (TryParseField(line, out string key, out string value) && (SummaryKeys.Contains(key) || key.Equals("synopsis", StringComparison.OrdinalIgnoreCase))) {
+            if (inNotes) {
+                notes.AppendLine(line.TrimEnd());
+                continue;
+            }
+            if (!TryParseField(line, out string key, out string value)) {
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    notes.AppendLine(line.TrimEnd());
+                }
+                continue;
+            }
+            if (SummaryKeys.Contains(key) || key.Equals("synopsis", StringComparison.OrdinalIgnoreCase)) {
                 synopsis = value;
             }
+            else if (key.Equals("notes", StringComparison.OrdinalIgnoreCase) || key.Equals("bible", StringComparison.OrdinalIgnoreCase)) {
+                inNotes = true;
+                if (value.Length > 0) {
+                    notes.AppendLine(value);
+                }
+            }
+            else {
+                notes.AppendLine($"{key}: {value}");
+            }
         }
-        if (!document.Books.Any(book => book.Title.Equals(block.Name, StringComparison.OrdinalIgnoreCase))) {
-            document.Books.Add(new ImportedBook(block.Name, synopsis));
+        string notesText = notes.ToString().Trim();
+        int index = document.Books.FindIndex(book => book.Title.Equals(block.Name, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) {
+            document.Books.Add(new ImportedBook(block.Name, synopsis) { Notes = notesText });
+        }
+        else if ((notesText.Length > 0) || ((synopsis.Length > 0) && (document.Books[index].Synopsis.Length == 0))) {
+            // The BOOK header is repeated after "continue"; keep what each copy adds.
+            ImportedBook previous = document.Books[index];
+            document.Books[index] = previous with {
+                Synopsis = previous.Synopsis.Length > 0 ? previous.Synopsis : synopsis,
+                Notes = string.Join(Environment.NewLine + Environment.NewLine, new[] { previous.Notes, notesText }.Where(static part => part.Length > 0))
+            };
         }
         return block.Name;
     }

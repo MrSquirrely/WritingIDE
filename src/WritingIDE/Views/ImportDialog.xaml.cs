@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -5,9 +7,12 @@ using System.Windows.Threading;
 
 using Microsoft.Win32;
 
+using WritingIDE.Core.Ai;
+using WritingIDE.Core.Analysis;
 using WritingIDE.Core.Import;
 using WritingIDE.Core.Model;
 using WritingIDE.Infrastructure;
+using WritingIDE.Services;
 
 namespace WritingIDE.Views;
 
@@ -17,15 +22,28 @@ public partial class ImportDialog : HandyControl.Controls.Window {
     private static readonly Brush UpdateBrush = Visuals.CreateBrush("#007ACC");
     private static readonly Brush SkipBrush = Visuals.CreateBrush("#9A9A9A");
 
+    /// <summary>A whole series can take dozens of replies; this only guards against an AI that never stops.</summary>
+    private const int MaxParts = 60;
+
     private readonly NovelProject _project;
+    private readonly AiService? _ai;
+    private readonly ObservableCollection<SourceItem> _sources = [];
+    private ImportPromptMode? _lastMode;
+    private bool _sending;
+    private bool _stopRequested;
     private readonly Dictionary<EntityKind, CheckBox> _kindChecks = new();
     private readonly DispatcherTimer _previewTimer;
     private readonly bool _ready;
     private string _fallbackTitle = "Imported Chapter";
 
-    public ImportDialog(NovelProject project) {
+    /// <param name="ai">The configured AI provider, for "Send to AI"; null hides the button.</param>
+    public ImportDialog(NovelProject project, AiService? ai = null) {
         InitializeComponent();
         _project = project;
+        _ai = ai;
+        SourcesList.ItemsSource = _sources;
+        SendButton.Visibility = ai is null ? Visibility.Collapsed : Visibility.Visible;
+        SendLabel.Text = ai is null ? "Send to AI" : $"Send to {ai.ProviderName}";
         foreach (EntityKindInfo info in EntityKindInfo.All) {
             CheckBox check = new() { Content = info.PluralName, IsChecked = true, Margin = new Thickness(0, 0, 14, 6) };
             check.Checked += OnOptionChanged;
@@ -65,6 +83,7 @@ public partial class ImportDialog : HandyControl.Controls.Window {
 
     private ImportPromptMode Mode => BibleRadio.IsChecked == true ? ImportPromptMode.ConvertBible
         : ManuscriptRadio.IsChecked == true ? ImportPromptMode.ConvertManuscript
+        : CombineRadio.IsChecked == true ? ImportPromptMode.CombineSeries
         : DevelopRadio.IsChecked == true ? ImportPromptMode.DevelopMyIdea
         : ImportPromptMode.ConvertMyText;
 
@@ -81,27 +100,36 @@ public partial class ImportDialog : HandyControl.Controls.Window {
             return;
         }
         ImportPromptMode mode = Mode;
-        bool fromChat = mode is ImportPromptMode.ConvertBible or ImportPromptMode.ConvertManuscript;
+        bool combine = mode == ImportPromptMode.CombineSeries;
+        if (mode != _lastMode) {
+            // A combined series keeps planned books as Outline chapters; a single bible's plan goes into its notes.
+            OutlineCheck.IsChecked = !combine;
+            _lastMode = mode;
+        }
+        bool fromChat = mode is ImportPromptMode.ConvertBible or ImportPromptMode.ConvertManuscript or ImportPromptMode.CombineSeries;
         ChaptersCheck.Content = mode switch {
             ImportPromptMode.ConvertBible => "Chapter plan",
-            ImportPromptMode.ConvertManuscript => "Chapters (always)",
+            ImportPromptMode.ConvertManuscript or ImportPromptMode.CombineSeries => "Chapters (always)",
             _ => "Chapters"
         };
-        ChaptersCheck.IsEnabled = mode != ImportPromptMode.ConvertManuscript;
+        ChaptersCheck.IsEnabled = mode is not (ImportPromptMode.ConvertManuscript or ImportPromptMode.CombineSeries);
+        SourcesPanel.Visibility = combine ? Visibility.Visible : Visibility.Collapsed;
         NotesCheck.Visibility = mode == ImportPromptMode.ConvertBible ? Visibility.Visible : Visibility.Collapsed;
-        bool chapters = (ChaptersCheck.IsChecked == true) || (mode == ImportPromptMode.ConvertManuscript);
+        bool chapters = (ChaptersCheck.IsChecked == true) || (mode is ImportPromptMode.ConvertManuscript or ImportPromptMode.CombineSeries);
         ChapterCountPanel.Visibility = (mode == ImportPromptMode.DevelopMyIdea) && chapters ? Visibility.Visible : Visibility.Collapsed;
-        MaterialLabel.Text = fromChat ? "Paste it here instead (optional)" : mode == ImportPromptMode.DevelopMyIdea ? "Your story idea" : "Your draft or notes";
+        MaterialLabel.Text = combine ? "Or paste material here (optional)" : fromChat ? "Paste it here instead (optional)" : mode == ImportPromptMode.DevelopMyIdea ? "Your story idea" : "Your draft or notes";
         HandyControl.Controls.InfoElement.SetPlaceholder(MaterialBox, fromChat
             ? "Leave empty when the bible or manuscript is already in your AI chat: send this prompt in that same chat."
             : "Paste it here to include it in the prompt, or leave empty and paste it into the AI chat after the prompt.");
         ModeHint.Text = mode switch {
             ImportPromptMode.ConvertBible => "Send the prompt in the chat where the bible was written. Long bibles arrive in parts: import each part, then reply \"continue\".",
             ImportPromptMode.ConvertManuscript => "Send the prompt in the chat where the manuscript was written. Import each part as it arrives, then reply \"continue\" for the next. A .md export of the manuscript can also be opened directly on the next tab, no AI needed.",
+            ImportPromptMode.CombineSeries => "A series is long: the AI answers in parts. \"Send to AI\" asks for every part and joins them for you. In a chat AI, import each part, then reply \"continue\". "
+                + "If the prompt is too long to paste, use \"Save as .txt\" and attach the file in the chat instead. The import turns this project into a series.",
             _ => ""
         };
         HashSet<EntityKind> kinds = _kindChecks.Where(static pair => pair.Value.IsChecked == true).Select(static pair => pair.Key).ToHashSet();
-        bool notes = (mode == ImportPromptMode.ConvertBible) && (NotesCheck.IsChecked == true);
+        bool notes = ((mode == ImportPromptMode.ConvertBible) && (NotesCheck.IsChecked == true)) || combine;
         if (!chapters && (kinds.Count == 0) && !notes) {
             PromptBox.Text = "Select at least one thing to include: chapters, story notes or a kind of story element.";
             return;
@@ -110,10 +138,114 @@ public partial class ImportDialog : HandyControl.Controls.Window {
             IsSeries = _project.IsSeries,
             ExistingBooks = _project.Books.Select(static book => book.Title).ToList(),
             IncludeOutlineChapters = chapters,
-            IncludeStoryNotes = notes
+            IncludeStoryNotes = notes,
+            Sources = combine ? _sources.Select(static item => item.Source).ToList() : []
         };
         PromptBox.Text = ImportPrompt.Build(options);
         CopyStatus.Text = "";
+        int sourceWords = _sources.Sum(static item => item.Words);
+        SourcesTotal.Text = _sources.Count == 0 ? "" : $"{_sources.Count} file{(_sources.Count == 1 ? "" : "s")}  \u00B7  {sourceWords.ToString("N0", CultureInfo.CurrentCulture)} words";
+        // Sending from here needs the material in the prompt: the provider has not seen any earlier chat.
+        bool hasMaterial = !string.IsNullOrWhiteSpace(MaterialBox.Text) || (combine && (_sources.Count > 0));
+        SendButton.IsEnabled = hasMaterial && !_sending;
+        SendButton.ToolTip = hasMaterial
+            ? "Sends the prompt to the AI provider set in AI Settings, asks for every part, and pastes the joined reply on the next tab"
+            : (combine ? "Add your manuscripts and bibles, or paste the material, to send it from here" : "Paste your material to send it from here");
+    }
+
+    private void OnAddSources(object sender, RoutedEventArgs e) {
+        OpenFileDialog dialog = new() {
+            Title = "Add Manuscripts and Bibles",
+            Filter = ImportSourceReader.FileFilter,
+            Multiselect = true,
+            InitialDirectory = _project.DirectoryPath
+        };
+        if (dialog.ShowDialog(this) != true) {
+            return;
+        }
+        List<string> failed = [];
+        foreach (string path in dialog.FileNames) {
+            if (_sources.Any(item => string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase))) {
+                continue;
+            }
+            try {
+                ImportSource source = ImportSourceReader.Read(path);
+                _sources.Add(new SourceItem(path, source, TextStatistics.CountWords(source.Text)));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or DocumentFormat.OpenXml.Packaging.OpenXmlPackageException) {
+                failed.Add($"{Path.GetFileName(path)}: {exception.Message}");
+            }
+        }
+        if (failed.Count > 0) {
+            HandyControl.Controls.MessageBox.Show(this, "Could not read:\n" + string.Join("\n", failed), "Add Files", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        UpdatePrompt();
+    }
+
+    private void OnRemoveSource(object sender, RoutedEventArgs e) {
+        if (SourcesList.SelectedItem is SourceItem item) {
+            _sources.Remove(item);
+            UpdatePrompt();
+        }
+    }
+
+    /// <summary>
+    /// Sends the prompt to the configured AI provider and keeps answering "continue" until the reply is complete,
+    /// joining the parts on the next tab. Each "continue" sends only the prompt and the previous part, so a long series
+    /// does not grow the request with every part.
+    /// </summary>
+    private async void OnSendToAi(object sender, RoutedEventArgs e) {
+        if ((_ai is null) || _sending) {
+            return;
+        }
+        string prompt = PromptBox.Text;
+        _sending = true;
+        _stopRequested = false;
+        SendButton.IsEnabled = false;
+        StopButton.Visibility = Visibility.Visible;
+        AiStatus.Visibility = Visibility.Visible;
+        List<string> parts = [];
+        List<AiMessage> messages = [AiMessage.User(prompt)];
+        try {
+            for (int part = 1; part <= MaxParts; part++) {
+                AiStatus.Text = $"Waiting for {_ai.ProviderName}: part {part}{(parts.Count > 0 ? $" ({CountWords(parts):N0} words so far)" : "")}...";
+                string? reply = await _ai.RunAsync("Importing with AI", messages);
+                if (reply is null) {
+                    AiStatus.Text = parts.Count == 0
+                        ? $"Nothing was received from {_ai.ProviderName}. See the Output window for the reason."
+                        : $"{_ai.ProviderName} stopped answering after {parts.Count} part(s). Import what arrived, then send again or continue in a chat AI.";
+                    break;
+                }
+                parts.Add(reply);
+                InputBox.Text = ImportPrompt.JoinParts(parts);
+                if (!ImportPrompt.AsksToContinue(reply)) {
+                    AiStatus.Text = $"Done: {parts.Count} part(s), {CountWords(parts):N0} words. Check the preview on the next tab, then import.";
+                    break;
+                }
+                if (_stopRequested || (part == MaxParts)) {
+                    AiStatus.Text = $"Stopped after {parts.Count} part(s). Import them now; the reply was not finished.";
+                    break;
+                }
+                messages = [AiMessage.User(prompt), AiMessage.Assistant(reply), AiMessage.User(ImportPrompt.ContinueReply)];
+            }
+        }
+        finally {
+            _sending = false;
+            StopButton.Visibility = Visibility.Collapsed;
+            UpdatePrompt();
+        }
+        if (parts.Count > 0) {
+            Tabs.SelectedIndex = 1;
+        }
+    }
+
+    private void OnStopAi(object sender, RoutedEventArgs e) {
+        _stopRequested = true;
+        AiStatus.Text = "Stopping after the part that is on its way...";
+    }
+
+    private static int CountWords(IEnumerable<string> parts) {
+        return parts.Sum(TextStatistics.CountWords);
     }
 
     private void OnCopyPrompt(object sender, RoutedEventArgs e) {
@@ -209,8 +341,8 @@ public partial class ImportDialog : HandyControl.Controls.Window {
 
         ImportDocument document = ImportParser.Parse(text, _fallbackTitle);
         if ((Document is null) || (Document.Books.Count != document.Books.Count)) {
-            // Offer to turn a novel into a series when the text brings books; default on for several books.
-            ConvertCheck.IsChecked = document.Books.Count > 1;
+            // Offer to turn a novel into a series when the text brings books; default on for several books or a series import.
+            ConvertCheck.IsChecked = (document.Books.Count > 1) || (document.Novel?.IsSeries == true) || (Mode == ImportPromptMode.CombineSeries);
         }
         Document = document;
         ImportConflictMode mode = ConflictMode;
@@ -312,4 +444,9 @@ public partial class ImportDialog : HandyControl.Controls.Window {
     }
 
     public sealed record PreviewItem(string Glyph, Brush GlyphBrush, string Name, string Detail, string Action, Brush ActionBrush);
+
+    /// <summary>A manuscript or bible added for a series import.</summary>
+    public sealed record SourceItem(string Path, ImportSource Source, int Words) {
+        public string WordsText => $"{Words.ToString("N0", CultureInfo.CurrentCulture)} words";
+    }
 }
