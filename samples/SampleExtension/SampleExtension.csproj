@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A sample WritingIDE extension. Build it, then copy bin\<Configuration>\net10.0\SampleExtension.dll into
+       %LocalAppData%\WritingIDE\Extensions\SampleExtension\ and restart WritingIDE. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: WritingIDE supplies the SDK and Core at run time, so they are not copied next to the extension. -->
+    <ProjectReference Include="..\..\src\WritingIDE.Sdk\WritingIDE.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

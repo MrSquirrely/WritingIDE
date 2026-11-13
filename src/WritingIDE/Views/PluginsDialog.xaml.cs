@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 using Microsoft.Win32;
@@ -34,6 +35,7 @@ public partial class PluginsDialog : HandyControl.Controls.Window {
         Closed += (_, _) => _harper.PropertyChanged -= OnHarperPropertyChanged;
         _ready = true;
         UpdateStatus();
+        InitializeExtensionsAndApi();
     }
 
     private void OnHarperPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -180,5 +182,78 @@ public partial class PluginsDialog : HandyControl.Controls.Window {
         StatusText.Text = _harper.Settings.Enabled ? "Starting harper-ls..." : "Stopping...";
         await _shell.ApplyPluginSettingsAsync();
         UpdateStatus();
+    }
+
+    // ------------------------------------------------------------------
+    // Extensions and the local API
+    // ------------------------------------------------------------------
+
+    private void InitializeExtensionsAndApi() {
+        ExtensionsFolderText.Text = Services.ExtensionManager.Root;
+        ExtensionsList.ItemsSource = _shell.Extensions.Installed;
+        NoExtensionsText.Visibility = _shell.Extensions.Installed.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ApiSwitch.IsChecked = _shell.Settings.Api.Enabled;
+        ApiPortBox.Text = _shell.Settings.Api.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UpdateApi();
+    }
+
+    private void OnOpenExtensionsFolder(object sender, RoutedEventArgs e) {
+        Directory.CreateDirectory(Services.ExtensionManager.Root);
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{Services.ExtensionManager.Root}\"") { UseShellExecute = true });
+    }
+
+    private void OnExtensionToggled(object sender, RoutedEventArgs e) {
+        if ((sender is ToggleButton { Tag: Services.ExtensionInfo extension } toggle)) {
+            _shell.Extensions.SetEnabled(extension, toggle.IsChecked == true);
+            ExtensionsList.Items.Refresh();
+        }
+    }
+
+    private void OnApiToggled(object sender, RoutedEventArgs e) {
+        _shell.Settings.Api.Enabled = ApiSwitch.IsChecked == true;
+        _shell.Settings.Save();
+        if (_shell.Settings.Api.Enabled) {
+            _shell.LocalApi.Start();
+        }
+        else {
+            _shell.LocalApi.Stop();
+        }
+        UpdateApi();
+    }
+
+    private void OnApiPortChanged(object sender, RoutedEventArgs e) {
+        if (int.TryParse(ApiPortBox.Text, out int port) && (port is > 1024 and < 65536) && (port != _shell.Settings.Api.Port)) {
+            _shell.Settings.Api.Port = port;
+            _shell.Settings.Save();
+            if (_shell.Settings.Api.Enabled) {
+                _shell.LocalApi.Start();
+            }
+        }
+        ApiPortBox.Text = _shell.Settings.Api.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UpdateApi();
+    }
+
+    private void OnCopyToken(object sender, RoutedEventArgs e) {
+        if (_shell.Settings.Api.Token.Length > 0) {
+            Clipboard.SetText(_shell.Settings.Api.Token);
+            MainViewModel.Notify("Token copied.");
+        }
+    }
+
+    private void OnNewToken(object sender, RoutedEventArgs e) {
+        _shell.Settings.Api.Token = Services.LocalApiServer.NewToken();
+        _shell.Settings.Save();
+        UpdateApi();
+    }
+
+    private void UpdateApi() {
+        if (_shell.Settings.Api.Token.Length == 0) {
+            _shell.Settings.Api.Token = Services.LocalApiServer.NewToken();
+            _shell.Settings.Save();
+        }
+        ApiTokenBox.Text = _shell.Settings.Api.Token;
+        ApiStatusText.Text = _shell.LocalApi.IsRunning ? $"\u25CF {_shell.LocalApi.Status}" : (_shell.Settings.Api.Enabled ? _shell.LocalApi.Status : "Off. Switch it on to accept requests.");
+        ApiExampleBox.Text = $"curl -H \"Authorization: Bearer {_shell.Settings.Api.Token}\" {_shell.LocalApi.BaseUrl}/chapters\n\n"
+            + $"Invoke-RestMethod {_shell.LocalApi.BaseUrl}/project -Headers @{{ Authorization = \"Bearer {_shell.Settings.Api.Token}\" }}";
     }
 }

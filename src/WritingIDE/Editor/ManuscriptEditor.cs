@@ -34,6 +34,10 @@ public sealed class ManuscriptEditor : TextEditor {
     private readonly ToolTip _toolTip = new() { Placement = PlacementMode.Mouse, Padding = new Thickness(8, 6, 8, 6) };
     private IReadOnlyList<EntityMention> _lastMentions = [];
     private bool _focusMode;
+    private readonly RevisionRenderer _revisions = new();
+    private readonly DeletionGenerator _deletions = new();
+    private readonly BookmarkMargin _bookmarks;
+    private bool _chordPending;
 
     public ManuscriptEditor(ChapterDocumentViewModel owner) {
         _owner = owner;
@@ -70,6 +74,18 @@ public sealed class ManuscriptEditor : TextEditor {
         _lenses = new NameLensGenerator((lenses, width) => NameLensGenerator.CreateLensVisual(lenses, width,
             entity => shell.OpenEntity(entity), shell.FindReferences, chapter => shell.OpenChapter(chapter)));
         TextArea.TextView.ElementGenerators.Add(_lenses);
+        TextArea.TextView.ElementGenerators.Add(_deletions);
+        // Lenses are as wide as the text area: rebuild them when it is resized (or first laid out, in a new pane).
+        TextArea.TextView.SizeChanged += (_, e) => {
+            if (e.WidthChanged && _lenses.HasLenses) {
+                Dispatcher.InvokeAsync(() => TextArea.TextView.Redraw(), System.Windows.Threading.DispatcherPriority.Background);
+            }
+        };
+        TextArea.TextView.BackgroundRenderers.Add(_revisions);
+        TextArea.TextView.LineTransformers.Add(new ManuscriptMarkupColorizer());
+        _bookmarks = new BookmarkMargin(owner.CommentSegments, line => owner.ToggleBookmark(line));
+        TextArea.LeftMargins.Insert(0, _bookmarks);
+        ApplyRevisions(owner.RevisionChanges);
         TextArea.TextEntered += (_, _) => KeepCaretCentered();
         SizeChanged += (_, _) => UpdateFocusLayout();
 
@@ -211,6 +227,22 @@ public sealed class ManuscriptEditor : TextEditor {
         }
     }
 
+    /// <summary>Shows revision-mode changes (inserted text shaded, deleted text struck through in place).</summary>
+    public void ApplyRevisions(IReadOnlyList<RevisionChange> changes) {
+        _revisions.Changes = changes;
+        _deletions.Changes = changes;
+        TextArea.TextView.Redraw();
+    }
+
+    public void RedrawMarkers() {
+        _bookmarks.InvalidateVisual();
+        TextArea.TextView.Redraw();
+    }
+
+    private RevisionChange? GetChangeAt(int offset) {
+        return _owner.RevisionChanges.FirstOrDefault(change => (offset >= change.Offset) && (offset <= change.End));
+    }
+
     private void AddComment() {
         _owner.AddComment(SelectionStart, SelectionLength);
     }
@@ -242,7 +274,40 @@ public sealed class ManuscriptEditor : TextEditor {
     private void OnPreviewKeyDown(object sender, KeyEventArgs e) {
         ModifierKeys modifiers = Keyboard.Modifiers;
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if ((key == Key.Space) && (modifiers == ModifierKeys.Control)) {
+        if (_chordPending && (key is not (Key.LeftCtrl or Key.RightCtrl))) {
+            // Visual Studio's bookmark chords: Ctrl+K then K (toggle), N (next), P (previous), L (clear all).
+            _chordPending = false;
+            _owner.Shell.StatusText = "Ready";
+            switch (key) {
+                case Key.K:
+                    _owner.ToggleBookmark(TextArea.Caret.Line);
+                    break;
+                case Key.N:
+                    _owner.GoToBookmark(forward: true);
+                    break;
+                case Key.P:
+                    _owner.GoToBookmark(forward: false);
+                    break;
+                case Key.L:
+                    _owner.ClearBookmarks();
+                    break;
+                default:
+                    _owner.Shell.StatusText = "That key combination is not a command.";
+                    break;
+            }
+            e.Handled = true;
+            return;
+        }
+        if ((key == Key.K) && (modifiers == ModifierKeys.Control)) {
+            _chordPending = true;
+            _owner.Shell.StatusText = "(Ctrl+K) was pressed. Waiting for the second key of the chord...";
+            e.Handled = true;
+        }
+        else if ((key == Key.Enter) && (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))) {
+            _owner.InsertSceneBreak();
+            e.Handled = true;
+        }
+        else if ((key == Key.Space) && (modifiers == ModifierKeys.Control)) {
             _completion.ShowAll();
             e.Handled = true;
         }
@@ -478,12 +543,30 @@ public sealed class ManuscriptEditor : TextEditor {
             }
         }
 
+        // Revision mode: accept or reject the change under the cursor.
+        RevisionChange? change = GetChangeAt(offset);
+        if (change is not null) {
+            menu.Items.Add(new MenuItem { Header = CreateHeaderText(change.Description), IsEnabled = false, Icon = CreateIcon("\uE70F", Visuals.MessageBrush) });
+            menu.Items.Add(CreateMenuItem("Accept Change", "\uE73E", () => _owner.AcceptChange(change)));
+            menu.Items.Add(CreateMenuItem("Reject Change", "\uE711", () => _owner.RejectChange(change)));
+            menu.Items.Add(new Separator());
+        }
+
         menu.Items.Add(CreateMenuItem(SelectionLength > 0 ? "Add Comment on Selection" : "Add Comment", "\uE90A", AddComment, "Ctrl+Alt+M"));
-        CommentSegment? commented = _owner.CommentSegments.FindSegmentsContaining(offset).FirstOrDefault();
+        CommentSegment? commented = _owner.CommentSegments.FindSegmentsContaining(offset).FirstOrDefault(static segment => segment.Comment.Kind == MarkerKind.Comment);
         if (commented is not null) {
             ChapterComment comment = commented.Comment;
             menu.Items.Add(CreateMenuItem(comment.IsResolved ? "Reopen Comment" : "Resolve Comment", "\uE73E", () => comment.IsResolved = !comment.IsResolved));
             menu.Items.Add(CreateMenuItem("Delete Comment", "\uE74D", () => _owner.DeleteComment(comment)));
+        }
+        menu.Items.Add(CreatePlotThreadMenu());
+        menu.Items.Add(CreateMenuItem("Toggle Bookmark", "\uE8A4", () => _owner.ToggleBookmark(Document.GetLineByOffset(offset).LineNumber), "Ctrl+K, Ctrl+K"));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(CreateMenuItem("Insert Scene Break", "\uE76F", _owner.InsertSceneBreak, "Ctrl+Shift+Enter"));
+        menu.Items.Add(CreateMenuItem("Split Chapter Here...", "\uE8C6", () => shell.SplitChapter(_owner, offset)));
+        MenuItem ai = CreateAiMenu();
+        if (ai.Items.Count > 0) {
+            menu.Items.Add(ai);
         }
         menu.Items.Add(new Separator());
 
@@ -495,6 +578,49 @@ public sealed class ManuscriptEditor : TextEditor {
         while ((menu.Items.Count > 0) && (menu.Items[^1] is Separator)) {
             menu.Items.RemoveAt(menu.Items.Count - 1);
         }
+    }
+
+    /// <summary>"Mark for Plot Thread": the selection (or the sentence at the caret) as a setup, development or payoff.</summary>
+    private MenuItem CreatePlotThreadMenu() {
+        MenuItem parent = new() { Header = CreateHeaderText("Mark for Plot Thread"), Icon = CreateIcon("\uE8F1", Visuals.GetKindBrush(EntityKind.Event)) };
+        NovelProject? project = _owner.Shell.Project;
+        foreach (PlotThread thread in project?.PlotThreads ?? []) {
+            MenuItem threadItem = new() { Header = CreateHeaderText(thread.Name) };
+            foreach (ThreadRole role in Enum.GetValues<ThreadRole>()) {
+                threadItem.Items.Add(CreateMenuItem(role.ToString(), "\uE8F1", () => _owner.MarkPlotThread(thread, role, SelectionStart, SelectionLength)));
+            }
+            parent.Items.Add(threadItem);
+        }
+        if (parent.Items.Count > 0) {
+            parent.Items.Add(new Separator());
+        }
+        parent.Items.Add(CreateMenuItem("New Plot Thread...", "\uE710", () => {
+            PlotThread? thread = _owner.Shell.CreatePlotThread();
+            if (thread is not null) {
+                _owner.MarkPlotThread(thread, ThreadRole.Setup, SelectionStart, SelectionLength);
+            }
+        }));
+        return parent;
+    }
+
+    /// <summary>AI tools on the selection (only when an AI provider is set up).</summary>
+    private MenuItem CreateAiMenu() {
+        MenuItem parent = new() { Header = CreateHeaderText("AI"), Icon = CreateIcon("\uE99A", Visuals.ProjectBrush) };
+        if (SelectionLength == 0) {
+            return parent;
+        }
+        int start = SelectionStart;
+        int length = SelectionLength;
+        foreach ((Core.Ai.RewriteKind kind, string title) in new[] {
+            (Core.Ai.RewriteKind.Tighten, "Tighten"),
+            (Core.Ai.RewriteKind.Vivid, "Make More Vivid"),
+            (Core.Ai.RewriteKind.Simplify, "Simplify"),
+            (Core.Ai.RewriteKind.FixGrammar, "Fix Grammar and Spelling"),
+            (Core.Ai.RewriteKind.Custom, "Rewrite with Instructions...")
+        }) {
+            parent.Items.Add(CreateMenuItem(title, "\uE99A", () => _ = _owner.Shell.Ai.RewriteAsync(_owner, start, length, kind)));
+        }
+        return parent;
     }
 
     private MenuItem CreateNewEntityMenu(string word) {

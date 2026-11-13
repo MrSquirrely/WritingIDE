@@ -1,0 +1,64 @@
+<hc:Window x:Class="WritingIDE.Views.ExportDialog" Icon="/Assets/WritingIDE.ico"
+           xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:hc="https://handyorg.github.io/handycontrol"
+           Title="Export" Width="760" Height="600" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
+           Background="{DynamicResource ChromeBrush}" NonClientAreaBackground="{DynamicResource ChromeBrush}" FontFamily="Segoe UI" FontSize="12">
+  <DockPanel Margin="18,14,18,14">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button x:Name="ExportButton" Style="{StaticResource PrimaryDialogButton}" Content="Export..." IsDefault="True" Click="OnExport" AutomationProperties.Name="Export" />
+      <Button Style="{StaticResource DialogButton}" Content="Close" IsCancel="True" />
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Top" Text="Export" FontSize="22" FontWeight="Light" Margin="0,0,0,10" />
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="250" />
+        <ColumnDefinition Width="18" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <ListBox x:Name="FormatList" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}" SelectionChanged="OnFormatChanged" AutomationProperties.Name="Export format">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="2,5">
+              <TextBlock FontWeight="SemiBold"><Run Text="{Binding Glyph, Mode=OneWay}" FontFamily="Segoe MDL2 Assets" /> <Run Text="{Binding Title, Mode=OneWay}" /></TextBlock>
+              <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <TextBlock x:Name="FormatTitle" FontSize="16" FontWeight="SemiBold" />
+          <TextBlock x:Name="FormatHelp" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,4,0,8" />
+
+          <TextBlock Style="{StaticResource FormLabel}" Text="What to export" />
+          <ComboBox x:Name="ScopeBox" AutomationProperties.Name="What to export" />
+
+          <StackPanel x:Name="StylePanel">
+            <TextBlock Style="{StaticResource FormLabel}" Text="Layout" />
+            <RadioButton x:Name="ManuscriptStyle" Content="Standard manuscript format (for agents and editors)" IsChecked="True" Margin="0,2" GroupName="Style" HorizontalAlignment="Left" />
+            <TextBlock Text="Times New Roman 12 pt, double spaced, 1-inch margins, &quot;Surname / TITLE / page&quot; header, chapters on new pages, # between scenes." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Margin="20,0,0,4" />
+            <RadioButton x:Name="BookStyle" Content="Book (typeset for reading)" Margin="0,2" GroupName="Style" HorizontalAlignment="Left" />
+            <TextBlock Text="Georgia, justified text, page numbers, * * * between scenes." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Margin="20,0,0,4" />
+          </StackPanel>
+
+          <StackPanel x:Name="TitlePanel">
+            <CheckBox x:Name="TitlePageBox" Content="Include a title page" IsChecked="True" Margin="0,10,0,0" />
+            <TextBlock Style="{StaticResource FormLabel}" Text="Contact details for the title page (manuscript format)" />
+            <TextBox x:Name="ContactBox" Style="{StaticResource FormTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalContentAlignment="Top"
+                     hc:InfoElement.Placeholder="Your name&#x0a;Address or email&#x0a;Phone" AutomationProperties.Name="Contact details" />
+          </StackPanel>
+
+          <StackPanel x:Name="AiPanel">
+            <CheckBox x:Name="FullTextBox" Content="Include the full text (otherwise synopses only, which is much shorter)" IsChecked="True" Margin="0,10,0,0" />
+            <TextBlock Style="{StaticResource FormLabel}" Text="What do you want from the AI? (optional, goes at the top)" />
+            <TextBox x:Name="InstructionsBox" Style="{StaticResource FormTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalContentAlignment="Top"
+                     hc:InfoElement.Placeholder="e.g. Read the whole book and tell me where the pacing sags." AutomationProperties.Name="Instructions for the AI" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</hc:Window>

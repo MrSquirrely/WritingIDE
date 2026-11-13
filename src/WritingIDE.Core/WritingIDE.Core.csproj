@@ -11,4 +11,12 @@
     <InternalsVisibleTo Include="WritingIDE.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- DOCX export (MIT) and PDF export (MIT) -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
+    <!-- PDFsharp depends on Pkcs 8.0.1, which has a known vulnerability (GHSA-846f-f764-76mx): use the patched release. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+  </ItemGroup>
+
 </Project>

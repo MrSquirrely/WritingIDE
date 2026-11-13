@@ -84,6 +84,102 @@ It uses the Git for Windows command line, and Git Credential Manager handles sig
 - **Timeline** (Analyze menu): chapters in reading order as cards, each with a story date edited in place, POV, words and synopsis. Events sit under the chapter that first mentions them (or the one in their `Chapter` attribute), and each character has a lane of dots wherever they appear. Dates such as "Day 3", "Year 2, Day 14", "12 May 1204" or "1204" are ordered, and a chapter set earlier than the one before it is flagged as a possible flashback.
 - **Relationship Map** (Analyze menu): characters (and optionally factions, places and others) as nodes. Relationships you add on an element's page ("sister of", "rival of") are drawn as solid labelled lines. Elements that share paragraphs are joined by dashed lines; set how many shared paragraphs it takes. Drag nodes to arrange them (saved with the project), hover to highlight a node's links, double-click to open.
 
+## Structure and revision
+
+- **Scenes**: a line containing just `* * *`, `***`, `#`, `~~~` or `---` is a scene break. Insert one with Ctrl+Shift+Enter (Edit > Insert Scene Break). `*** At the gate` gives the scene a label. Scene breaks are dimmed in the editor, listed in the Outline with each scene's words and detected POV, and exported as `#` (manuscript format) or `* * *` (book).
+- **Split and merge chapters**: Project > Split Chapter at Caret moves the text from the caret on into a new chapter right after (scene breaks at the cut are dropped). Merge with Next Chapter (Project menu, or right-click a chapter in Solution Explorer) appends the next chapter after a scene break. Comments, bookmarks and plot markers move with their text.
+- **Revision mode (track changes)**: under Revision mode in a chapter's Properties, choose "Start tracking changes", or press the track-changes button on a snapshot to compare against it. From then on, inserted text is shaded green and deleted text stays visible, struck through in red, without being part of the chapter. Right-click a change to accept it (the change is kept and stops being shown) or reject it (the old text comes back; Ctrl+Z works). Accept all, Reject all and Next are in Properties. The baseline is kept in `Revisions/` in the project folder, so tracking survives restarts.
+- **Plot threads and foreshadowing**: Analyze > Plot Threads lists every thread (a promise to the reader, such as "The compass points to where Tobias died"), with its status (open, resolved, abandoned). Select a passage in a chapter and right-click > Mark for Plot Thread > *thread* > Setup / Development / Payoff, or start a new thread from there. Marked passages get a purple dashed underline and a card in the margin. The tracker lists each thread's passages in reading order and warns about setups never paid off, payoffs with nothing set up, payoffs before their setup, threads marked resolved without a payoff, and abandoned threads with leftover passages.
+
+## Navigation
+
+- **Outline** (the tab next to Properties, or View > Outline): the current chapter's scenes, bookmarks, TODOs, comments and plot-thread passages in order. Click one to go there.
+- **Second pane** (Window > Split: Open in Second Pane, or right-click a chapter or story element in Solution Explorer > Open in Second Pane): shows a document beside the document well. A chapter opened there is a second editor on the same text, so you can read chapter 3 while writing chapter 12, or keep the same chapter at two places. Story element pages and the bible can go there too.
+- **Bookmarks**: Ctrl+K, Ctrl+K toggles a bookmark on the current line (or click the bookmark gutter at the far left). Ctrl+K, Ctrl+N / Ctrl+P move to the next / previous one, and Ctrl+K, Ctrl+L clears the chapter's bookmarks. View > Bookmarks lists them all. They are saved with the project.
+- **Task List**: `TODO`, `FIXME`, `XXX` and `TK` ("to come") in the text are highlighted, and View > Task List collects them from the whole manuscript, as in Visual Studio. Write `TODO: check the date` or `[TK]`.
+
+## Export
+
+File > Export (Ctrl+Shift+E) exports the whole manuscript, one book of a series, or the current chapter:
+
+| Format | What you get |
+|---|---|
+| Word (.docx) | Standard manuscript format (Times New Roman 12 pt, double spaced, 1" margins, "Surname / TITLE / page" header, title page with contact details and word count, chapters on new pages a third of the way down, `#` between scenes, END), or a typeset book layout. Chapters use Heading 1, so Word's navigation pane lists them. |
+| E-book (.epub) | EPUB 3 with a table of contents (and an EPUB 2 one for older readers), for Kindle (Send to Kindle), Apple Books, Kobo and other e-readers. |
+| PDF | Manuscript format on US Letter, or a 6 x 9 in book with justified text and page numbers. |
+| Google Docs | A .docx that converts cleanly (chapters become the Google Docs outline). WritingIDE then shows the file in Explorer and opens Google Drive: choose New > File upload (or drag the file in), then open it with Google Docs. |
+| Markdown | `#` book and `##` chapter headings; Import reads it back. |
+| For an AI chat | One Markdown file with the story bible, every story element (attributes and relationships), plot threads, chapter synopses, story dates and POV, and optionally the full text, plus your instructions at the top. It is also copied to the clipboard, ready to paste into any AI chat. |
+
+`*italic*`, `_italic_` and `**bold**` in the manuscript become real italics and bold in DOCX, EPUB and PDF. Extensions can add more formats.
+
+## AI tools
+
+The AI menu works with free AI services. Set one up in AI > AI Settings:
+
+| Provider | Cost | Notes |
+|---|---|---|
+| Google Gemini | Free tier ([get a key](https://aistudio.google.com/apikey)) | Very large context: whole books fit. The default. |
+| Groq | Free tier ([get a key](https://console.groq.com/keys)) | Very fast; smaller context, so work chapter by chapter. |
+| OpenRouter | Free models ([get a key](https://openrouter.ai/keys)) | One key, many models; "List models" shows only the free (`:free`) ones. |
+| Ollama | Free, on your PC ([download](https://ollama.com/download)) | Private: nothing leaves your computer. No key. Run `ollama pull llama3.2` first. |
+| Other | | Any OpenAI-compatible server (LM Studio, llama.cpp). |
+
+- **Ask About Your Book**: a chat that has read the story bible, the story elements and the manuscript (or synopses plus the current chapter). Ask things like "When did Rowan last see the lighthouse?" or "Which threads are still open?".
+- **Summarize Chapter** writes the chapter's synopsis (you confirm before it replaces one).
+- **Beta Read Chapter** and **Check Continuity with AI** put the AI's notes in the comment margin, attached to the passages they are about. Resolve or delete them as you go.
+- **Rewrite** (select text, right-click > AI): Tighten, Make More Vivid, Simplify, Fix Grammar, or your own instruction. The suggestion opens beside the original; edit it, then Replace (Ctrl+Z undoes it).
+
+API keys are stored encrypted for your Windows account (DPAPI), never in plain text or in the project. Before WritingIDE sends manuscript text to an online provider for the first time, it asks. Free tiers may use what you send to improve their models, so check each provider's terms, or use Ollama to keep everything local.
+
+## Extensions (SDK) and local API
+
+WritingIDE is open to other code in two ways. Both are managed in Tools > Extensions and API.
+
+### Writing an extension
+
+An extension is a .NET 10 class library that references `src/WritingIDE.Sdk` and implements `IWritingIdePlugin`:
+
+```csharp
+public sealed class MyExtension : IWritingIdePlugin {
+    public string Id => "com.example.myextension";
+    public string Name => "My Extension";
+    public string Version => "1.0.0";
+    public string Description => "What it does.";
+
+    public void Initialize(IPluginHost host) {
+        host.RegisterRule(new MyGrammarRule());              // runs on every chapter, findings in the Error List
+        host.RegisterExporter(new MyExporter());             // appears in File > Export
+        host.RegisterCommand(new PluginCommand("Do Something", project => { /* IProjectApi */ }));  // Extensions menu
+        host.ProjectOpened += (_, _) => host.Log($"Opened {host.Project.Name}");
+    }
+}
+```
+
+`IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements, comments, the Error List, and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command and a plain-text exporter. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
+
+### Local REST API
+
+Turn it on in Tools > Extensions and API > Local API. It listens on `http://localhost:5719/api` (the port is configurable), on this computer only. Every request needs the token shown there, as `Authorization: Bearer <token>`.
+
+| Request | Does |
+|---|---|
+| `GET /api/project` | Name, author, chapter count, words |
+| `GET /api/chapters` | Chapters in reading order (id, title, book, status, synopsis, POV, story date, words) |
+| `POST /api/chapters` | Add a chapter: `{ "title": "...", "text": "...", "bookId": null }` |
+| `GET /api/chapters/{id}` | A chapter and its text |
+| `PUT /api/chapters/{id}/text` | Replace its text (plain text or `{ "text": "..." }`); undoable in an open editor |
+| `GET` / `POST /api/chapters/{id}/comments` | Comments, bookmarks and plot markers / add a comment `{ "offset": 0, "length": 5, "text": "..." }` |
+| `GET` / `POST /api/entities` | Story elements / add one `{ "kind": "Character", "name": "...", "summary": "..." }` |
+| `GET /api/diagnostics` | The Error List |
+| `POST /api/save` | Save the project |
+| `GET /api/openapi.json` | OpenAPI 3 description (no token needed), for Postman, Swagger UI and code generators |
+
+```powershell
+$h = @{ Authorization = "Bearer <token>" }
+Invoke-RestMethod http://localhost:5719/api/chapters -Headers $h
+```
+
 ## Plugins: Harper
 
 **Tools > Plugins** turns on [Harper](https://github.com/Automattic/harper), Automattic's open-source grammar checker. WritingIDE runs Harper's language server, `harper-ls`, on your computer (text never leaves it) and adds its findings to the Error List and squiggles under rule ID `HARPER`. Harper's quick fixes appear in Ctrl+. like the built-in ones.
@@ -142,6 +238,9 @@ It uses the Git for Windows command line, and Git Credential Manager handles sig
 | NW4004 | An age next to a character's name ("Rowan, forty-one,") that contradicts their Age attribute | Warning |
 | NW4005 | A possessive pronoun in a self-directed gesture ("Wren tossed his hair") that contradicts their Pronouns attribute | Warning |
 | NW4006 | A character who acts or speaks after the chapter named in their Died attribute (`Died: Chapter 12`); quoted dialogue and memories are ignored | Warning |
+| NW4007 | An item called someone else's ("Wren's compass") when its Owner attribute names another character | Warning |
+| NW4008 | An age that does not fit the character's Born year and the chapter's story date (born 1180, "forty" in Spring 1204) | Warning |
+| NW4009 | A relationship in the text ("Kael's sister Wren") that contradicts the relationships defined on the characters' pages (Wren: daughter of Kael) | Warning |
 | HARPER | Findings from the Harper plugin, when enabled (spelling counts as an error) | Warning |
 
 To add a rule, derive from `GrammarRule` (or `PatternRule` for phrase tables) and add it to `GrammarEngine.Rules`.
@@ -149,9 +248,11 @@ To add a rule, derive from `GrammarRule` (or `PatternRule` for phrase tables) an
 ## Layout
 
 ```
-src/WritingIDE.Core     Model, persistence, import parser and AI prompt, tokenizer, grammar engine, statistics (no UI dependencies)
-src/WritingIDE          WPF shell (HandyControls): AvalonEdit-based editor, IntelliSense, squiggles, tool windows, dialogs, Harper plugin (LSP client)
-tests/                  xUnit tests for the grammar engine, analysis, import and persistence
+src/WritingIDE.Core     Model, persistence, import, grammar engine, analysis, exporters (DOCX, EPUB, PDF), AI clients and prompts (no UI dependencies)
+src/WritingIDE.Sdk      The extension SDK: IWritingIdePlugin, IPluginHost, IProjectApi
+src/WritingIDE          WPF shell (HandyControls): AvalonEdit-based editor, IntelliSense, squiggles, tool windows, dialogs, Harper plugin (LSP client), extension loader, local REST API
+samples/                SampleExtension: a complete extension built on the SDK
+tests/                  xUnit tests for the grammar engine, analysis, import, export, AI clients and persistence
 ```
 
 A project is a folder that holds `Name.novproj` (JSON: metadata, story elements, dictionary, disabled rules) and `Manuscript/*.txt` (one plain-text file per chapter).

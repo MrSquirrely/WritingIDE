@@ -11,6 +11,9 @@ public sealed record GrammarOptions(EntityIndex Entities, IReadOnlySet<string> C
     /// <summary>Where the analysed chapter sits in the manuscript; continuity rules about time need it.</summary>
     public ManuscriptPosition? Position { get; init; }
 
+    /// <summary>The analysed chapter's story date ("Spring 1204"), for checks that need the year.</summary>
+    public string StoryDate { get; init; } = "";
+
     public static GrammarOptions Default { get; } = new(EntityIndex.Empty, new HashSet<string>(), new HashSet<string>());
 }
 

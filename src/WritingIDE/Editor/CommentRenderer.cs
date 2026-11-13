@@ -31,8 +31,17 @@ public sealed class CommentRenderer(TextSegmentCollection<CommentSegment> segmen
         Brush active = Resource("CommentActiveHighlightBrush");
         int viewStart = textView.VisualLines[0].FirstDocumentLine.Offset;
         int viewEnd = textView.VisualLines[^1].LastDocumentLine.EndOffset;
+        Brush thread = Resource("EventBrush");
         foreach (CommentSegment segment in segments.FindOverlappingSegments(viewStart, viewEnd - viewStart)) {
-            if (segment.Comment.IsResolved) {
+            if (segment.Comment.IsResolved || (segment.Comment.Kind == MarkerKind.Bookmark)) {
+                continue;
+            }
+            if ((segment.Comment.Kind == MarkerKind.PlotThread) && (segment.Length > 0)) {
+                // Plot-thread passages: a dashed underline in the event colour, solid while their card is focused.
+                Pen pen = new(thread, segment.Comment == ActiveComment ? 2 : 1.5) { DashStyle = segment.Comment == ActiveComment ? DashStyles.Solid : DashStyles.Dash };
+                foreach (Rect rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, segment)) {
+                    drawingContext.DrawLine(pen, new Point(rect.Left, rect.Bottom - 1), new Point(rect.Right, rect.Bottom - 1));
+                }
                 continue;
             }
             Brush brush = segment.Comment == ActiveComment ? active : normal;

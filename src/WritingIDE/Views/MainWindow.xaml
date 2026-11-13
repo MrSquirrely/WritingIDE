@@ -22,6 +22,7 @@
     <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{Binding ReplaceInFilesCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleDistractionFreeCommand}" />
     <KeyBinding Key="S" Modifiers="Ctrl+Alt" Command="{Binding TakeSnapshotCommand}" />
+    <KeyBinding Key="E" Modifiers="Ctrl+Shift" Command="{Binding ExportCommand}" />
   </Window.InputBindings>
 
   <Window.Resources>
@@ -119,6 +120,10 @@
                             Command="{Binding DataContext.CompareSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                       <TextBlock Style="{StaticResource Glyph}" Text="&#xE8CB;" FontSize="11" />
                     </Button>
+                    <Button Style="{StaticResource ToolButton}" Padding="3" ToolTip="Revision mode: show the changes since this snapshot inline, to accept or reject" AutomationProperties.Name="Track changes since snapshot" CommandParameter="{Binding}"
+                            Command="{Binding DataContext.TrackSinceSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                      <TextBlock Style="{StaticResource Glyph}" Text="&#xE70F;" FontSize="11" />
+                    </Button>
                     <Button Style="{StaticResource ToolButton}" Padding="3" ToolTip="Restore this version" AutomationProperties.Name="Restore snapshot" CommandParameter="{Binding}"
                             Command="{Binding DataContext.RestoreSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                       <TextBlock Style="{StaticResource Glyph}" Text="&#xE7A7;" FontSize="11" />
@@ -138,6 +143,22 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+
+          <!-- Revision mode (track changes) -->
+          <TextBlock Style="{StaticResource FormLabel}" Text="Revision mode" Margin="0,16,0,4" />
+          <TextBlock Text="Shows what you change from now on (or since a snapshot) inline: insertions in green, deletions struck through. Right-click a change to accept or reject it."
+                     TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Visibility="{Binding IsTrackingRevisions, Converter={x:Static inf:BoolToVisibilityConverter.Inverted}}" />
+          <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Left" Content="Start tracking changes" Command="{Binding StartRevisionsCommand}" Margin="0,4,0,0"
+                  Visibility="{Binding IsTrackingRevisions, Converter={x:Static inf:BoolToVisibilityConverter.Inverted}}" AutomationProperties.Name="Start tracking changes" />
+          <StackPanel Visibility="{Binding IsTrackingRevisions, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding RevisionSummary}" Foreground="{DynamicResource LabelBrush}" />
+            <WrapPanel Margin="0,4,0,0">
+              <Button Style="{StaticResource LinkButton}" Content="Next" Command="{Binding NextChangeCommand}" Margin="0,0,12,0" />
+              <Button Style="{StaticResource LinkButton}" Content="Accept all" Command="{Binding AcceptAllCommand}" Margin="0,0,12,0" AutomationProperties.Name="Accept all changes" />
+              <Button Style="{StaticResource LinkButton}" Content="Reject all" Command="{Binding RejectAllCommand}" Margin="0,0,12,0" AutomationProperties.Name="Reject all changes" />
+              <Button Style="{StaticResource LinkButton}" Content="Stop" Command="{Binding StopRevisionsCommand}" AutomationProperties.Name="Stop tracking changes" />
+            </WrapPanel>
+          </StackPanel>
 
           <TextBlock Style="{StaticResource FormLabel}" Text="Statistics" Margin="0,16,0,4" />
           <Grid>
@@ -215,7 +236,7 @@
         <MenuItem Header="_Save All" Command="{Binding SaveAllCommand}" InputGestureText="Ctrl+S" />
         <Separator />
         <MenuItem Header="_Import..." Command="{Binding ImportCommand}" InputGestureText="Ctrl+I" />
-        <MenuItem Header="_Export Manuscript..." Command="{Binding ExportCommand}" />
+        <MenuItem Header="_Export..." Command="{Binding ExportCommand}" InputGestureText="Ctrl+Shift+E" />
         <Separator />
         <MenuItem Header="Start _Page" Command="{Binding ShowStartPageCommand}" />
         <Separator />
@@ -236,6 +257,13 @@
         <MenuItem Header="Add _Comment" Command="{Binding AddCommentCommand}" InputGestureText="Ctrl+Alt+M" />
         <MenuItem Header="_List All Comments" Command="{Binding ListCommentsCommand}" />
         <MenuItem Header="Take Chapter Snaps_hot..." Command="{Binding TakeSnapshotCommand}" InputGestureText="Ctrl+Alt+S" />
+        <MenuItem Header="Insert Scene _Break" Command="{Binding InsertSceneBreakCommand}" InputGestureText="Ctrl+Shift+Enter" />
+        <MenuItem Header="_Bookmarks">
+          <MenuItem Header="_Toggle Bookmark" Command="{Binding ToggleBookmarkCommand}" InputGestureText="Ctrl+K, Ctrl+K" />
+          <MenuItem Header="_Next Bookmark" Command="{Binding NextBookmarkCommand}" InputGestureText="Ctrl+K, Ctrl+N" />
+          <MenuItem Header="_Previous Bookmark" Command="{Binding PreviousBookmarkCommand}" InputGestureText="Ctrl+K, Ctrl+P" />
+          <MenuItem Header="_Clear Bookmarks in Chapter" Command="{Binding ClearBookmarksCommand}" InputGestureText="Ctrl+K, Ctrl+L" />
+        </MenuItem>
         <Separator />
         <MenuItem Command="ApplicationCommands.SelectAll" />
       </MenuItem>
@@ -250,6 +278,10 @@
         <MenuItem Header="_Comments" IsCheckable="True" IsChecked="{Binding ShowCommentMargin}" />
         <Separator />
         <MenuItem Header="_Distraction-Free Writing" Command="{Binding ToggleDistractionFreeCommand}" InputGestureText="F11" />
+        <Separator />
+        <MenuItem Header="Book_marks" Click="OnShowBookmarks" />
+        <MenuItem Header="Tas_k List" Click="OnShowTaskList" />
+        <MenuItem Header="O_utline" Click="OnShowOutline" />
         <Separator />
         <MenuItem Header="_Theme">
           <MenuItem Header="Use _Windows Setting" Command="{Binding SetThemeCommand}" CommandParameter="System" IsChecked="{Binding IsSystemTheme, Mode=OneWay}" />
@@ -271,6 +303,10 @@
         <MenuItem Header="Story _Bible" Command="{Binding OpenStoryBibleCommand}" />
         <MenuItem Header="Con_vert to Series..." Command="{Binding ConvertToSeriesCommand}" />
         <Separator />
+        <MenuItem Header="_Split Chapter at Caret..." Command="{Binding SplitChapterCommand}" />
+        <MenuItem Header="_Merge with Next Chapter" Command="{Binding MergeWithNextCommand}" />
+        <MenuItem Header="New Plot _Thread..." Command="{Binding NewPlotThreadCommand}" />
+        <Separator />
         <MenuItem Header="P_roperties..." Command="{Binding OptionsCommand}" />
       </MenuItem>
       <MenuItem Header="_Analyze">
@@ -279,6 +315,7 @@
         <MenuItem Header="_Character and POV Statistics" Command="{Binding OpenCharacterStatisticsCommand}" />
         <MenuItem Header="_Timeline" Command="{Binding OpenTimelineCommand}" />
         <MenuItem Header="_Relationship Map" Command="{Binding OpenRelationshipMapCommand}" />
+        <MenuItem Header="_Plot Threads" Command="{Binding OpenPlotThreadsCommand}" />
       </MenuItem>
       <MenuItem Header="_Tools">
         <MenuItem Header="_Auto-complete Names While Typing" IsCheckable="True" IsChecked="{Binding AutoCompleteNames}" />
@@ -290,8 +327,25 @@
           <MenuItem Header="Every 5 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="5" />
           <MenuItem Header="Every 10 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="10" />
         </MenuItem>
-        <MenuItem Header="_Plugins..." Command="{Binding PluginsCommand}" />
+        <MenuItem Header="_Extensions and API..." Command="{Binding PluginsCommand}" />
         <MenuItem Header="_Options..." Command="{Binding OptionsCommand}" />
+      </MenuItem>
+      <MenuItem Header="A_I">
+        <MenuItem Header="_Ask About Your Book" Command="{Binding Ai.ChatCommand}" />
+        <Separator />
+        <MenuItem Header="_Summarize Chapter" Command="{Binding Ai.SummarizeCommand}" ToolTip="Writes the chapter's synopsis" />
+        <MenuItem Header="_Beta Read Chapter" Command="{Binding Ai.BetaReadCommand}" ToolTip="Notes on the chapter appear as margin comments" />
+        <MenuItem Header="Check _Continuity with AI" Command="{Binding Ai.ContinuityCommand}" ToolTip="Contradictions with the story bible appear as margin comments" />
+        <MenuItem Header="_Rewrite Selection" IsEnabled="False" ToolTip="Select text in a chapter and right-click > AI" />
+        <Separator />
+        <MenuItem Header="AI _Settings..." Command="{Binding Ai.SettingsCommand}" />
+      </MenuItem>
+      <MenuItem x:Name="ExtensionsMenu" Header="E_xtensions" SubmenuOpened="OnExtensionsMenuOpened">
+        <MenuItem Header="(no extension commands)" IsEnabled="False" />
+      </MenuItem>
+      <MenuItem Header="_Window">
+        <MenuItem Header="_Split: Open in Second Pane" Command="{Binding OpenInSplitPaneCommand}" ToolTip="Shows the current document in a second pane beside this one" />
+        <MenuItem Header="_Close Second Pane" Command="{Binding CloseSplitPaneCommand}" />
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_About WritingIDE" Command="{Binding AboutCommand}" />
@@ -437,8 +491,26 @@
 
       <GridSplitter x:Name="LeftSplitter" Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" HorizontalAlignment="Stretch" />
 
-      <!-- Document well -->
-      <TabControl x:Name="DocumentWell" Grid.Row="0" Grid.Column="2" Style="{StaticResource DocumentTabControl}"
+      <!-- Document well, and the optional second (split) pane beside it -->
+      <Grid x:Name="EditorArea" Grid.Row="0" Grid.Column="2">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" MinWidth="200" />
+          <ColumnDefinition x:Name="SplitSplitterColumn" Width="0" />
+          <ColumnDefinition x:Name="SplitPaneColumn" Width="0" />
+        </Grid.ColumnDefinitions>
+        <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{DynamicResource BorderBrush}" />
+        <DockPanel x:Name="SplitPane" Grid.Column="2" Background="{DynamicResource SurfaceBrush}" Visibility="Collapsed">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="0,0,0,2" Padding="8,3">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Style="{StaticResource TabCloseButton}" Command="{Binding CloseSplitPaneCommand}" ToolTip="Close the second pane" AutomationProperties.Name="Close second pane">
+                <TextBlock Style="{StaticResource Glyph}" Text="&#xE711;" FontSize="8" />
+              </Button>
+              <TextBlock VerticalAlignment="Center"><Run Text="&#xE89F;" FontFamily="Segoe MDL2 Assets" /> <Run Text="{Binding SecondaryTitle, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+            </DockPanel>
+          </Border>
+          <ContentControl Content="{Binding SecondaryView}" Focusable="False" />
+        </DockPanel>
+      <TabControl x:Name="DocumentWell" Grid.Column="0" Style="{StaticResource DocumentTabControl}"
                   ItemsSource="{Binding Documents}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}">
         <TabControl.ItemTemplate>
           <DataTemplate>
@@ -458,6 +530,7 @@
           </DataTemplate>
         </TabControl.ContentTemplate>
       </TabControl>
+      </Grid>
 
       <!-- HandyControls Growl notifications float over the document well -->
       <ScrollViewer Grid.Row="0" Grid.Column="2" VerticalScrollBarVisibility="Hidden" HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -644,15 +717,54 @@
             </Grid>
           </Grid>
         </TabItem>
+        <!-- ================= Bookmarks ================= -->
+        <TabItem>
+          <TabItem.Header>
+            <TextBlock>
+              <Run Text="Bookmarks" /> <Run Text="{Binding BookmarkItems.Count, Mode=OneWay, StringFormat='({0})'}" Foreground="{DynamicResource SubtleTextBrush}" />
+            </TextBlock>
+          </TabItem.Header>
+          <DockPanel Background="{DynamicResource SurfaceBrush}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolWindowHeader}" Background="{DynamicResource PanelBrush}">
+              <TextBlock Text="Ctrl+K, Ctrl+K toggles a bookmark on the current line (or click the gutter). Ctrl+K, Ctrl+N / Ctrl+P move between them. Double-click a row to go there." Foreground="{DynamicResource LabelBrush}" />
+            </Border>
+            <DataGrid Style="{StaticResource IdeDataGrid}" ItemsSource="{Binding BookmarkItems}" MouseDoubleClick="OnReferenceDoubleClick" AutomationProperties.Name="Bookmarks">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Chapter" Binding="{Binding Document}" Width="170" />
+                <DataGridTextColumn Header="Line" Binding="{Binding Line}" Width="50" />
+                <DataGridTextColumn Header="Text" Binding="{Binding Preview}" Width="*" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </TabItem>
+        <!-- ================= Task List ================= -->
+        <TabItem>
+          <TabItem.Header>
+            <TextBlock>
+              <Run Text="Task List" /> <Run Text="{Binding TaskItems.Count, Mode=OneWay, StringFormat='({0})'}" Foreground="{DynamicResource SubtleTextBrush}" />
+            </TextBlock>
+          </TabItem.Header>
+          <DockPanel Background="{DynamicResource SurfaceBrush}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolWindowHeader}" Background="{DynamicResource PanelBrush}">
+              <TextBlock Text="TODO, FIXME, XXX and TK (to come) left in the manuscript, e.g. &quot;TODO: check the date&quot;. Double-click a row to go there." Foreground="{DynamicResource LabelBrush}" />
+            </Border>
+            <DataGrid Style="{StaticResource IdeDataGrid}" ItemsSource="{Binding TaskItems}" MouseDoubleClick="OnReferenceDoubleClick" AutomationProperties.Name="Task list">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Task" Binding="{Binding Preview}" Width="*" />
+                <DataGridTextColumn Header="Chapter" Binding="{Binding Document}" Width="170" />
+                <DataGridTextColumn Header="Line" Binding="{Binding Line}" Width="50" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </TabItem>
       </TabControl>
 
       <GridSplitter x:Name="RightSplitter" Grid.Row="0" Grid.RowSpan="3" Grid.Column="3" HorizontalAlignment="Stretch" />
 
       <!-- Right-hand panel: chapter info or project overview -->
-      <DockPanel x:Name="PropertiesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="4" Background="{DynamicResource SurfaceBrush}">
-        <Border DockPanel.Dock="Top" Style="{StaticResource ToolWindowHeader}">
-          <TextBlock Style="{StaticResource ToolWindowTitle}" Text="Properties" />
-        </Border>
+      <TabControl x:Name="PropertiesPanel" Grid.Row="0" Grid.RowSpan="3" Grid.Column="4" Style="{StaticResource ToolTabControl}" Background="{DynamicResource SurfaceBrush}">
+      <TabItem Header="Properties">
+      <DockPanel Background="{DynamicResource SurfaceBrush}">
         <Border DockPanel.Dock="Top" Padding="10,8" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                 Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}">
           <StackPanel>
@@ -675,6 +787,52 @@
           </ContentControl.Style>
         </ContentControl>
       </DockPanel>
+      </TabItem>
+
+      <!-- Document Outline: scenes, bookmarks, tasks, comments and plot-thread passages of the current chapter -->
+      <TabItem x:Name="OutlineTab" Header="Outline">
+        <DockPanel Background="{DynamicResource SurfaceBrush}" DataContext="{Binding ActiveChapter}">
+          <TextBlock DockPanel.Dock="Top" Margin="10,8,10,4" TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="11"
+                     Text="Scenes (separated by * * *), bookmarks, TODOs, comments and plot-thread passages. Click to go there." />
+          <TextBlock DockPanel.Dock="Top" Margin="10,8" Text="Open a chapter to see its outline." Foreground="{DynamicResource SubtleTextBrush}">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <ListBox ItemsSource="{Binding Outline}" BorderThickness="0" HorizontalContentAlignment="Stretch" SelectionChanged="OnOutlineSelected" AutomationProperties.Name="Outline"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <DockPanel Margin="0,1">
+                  <TextBlock DockPanel.Dock="Left" Style="{StaticResource Glyph}" Text="{Binding Glyph}" Margin="0,2,8,0" VerticalAlignment="Top" Foreground="{DynamicResource IconGreyBrush}" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text}">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsScene}" Value="True">
+                              <Setter Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock FontSize="11" Foreground="{DynamicResource SubtleTextBrush}"><Run Text="{Binding KindLabel, Mode=OneWay}" /><Run Text=" &#xB7; line " /><Run Text="{Binding Line, Mode=OneWay}" /><Run Text="  " /><Run Text="{Binding Details, Mode=OneWay}" /></TextBlock>
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+      </TabControl>
     </Grid>
   </DockPanel>
 </hc:Window>

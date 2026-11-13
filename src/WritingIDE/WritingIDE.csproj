@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WritingIDE.Core\WritingIDE.Core.csproj" />
+    <ProjectReference Include="..\WritingIDE.Sdk\WritingIDE.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

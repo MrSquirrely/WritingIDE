@@ -1,0 +1,33 @@
+<hc:Window x:Class="WritingIDE.Views.RewriteDialog" Icon="/Assets/WritingIDE.ico"
+           xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:hc="https://handyorg.github.io/handycontrol"
+           Title="AI Rewrite" Width="820" Height="520" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
+           Background="{DynamicResource ChromeBrush}" NonClientAreaBackground="{DynamicResource ChromeBrush}" FontFamily="Segoe UI" FontSize="12">
+  <DockPanel Margin="18,14,18,14">
+    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,0,0,8"
+               Text="Edit the suggestion as you like, then Replace. Ctrl+Z in the chapter undoes it." />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Style="{StaticResource PrimaryDialogButton}" Content="Replace" IsDefault="True" Click="OnReplace" AutomationProperties.Name="Replace" />
+      <Button Style="{StaticResource DialogButton}" Content="Copy" Click="OnCopy" />
+      <Button Style="{StaticResource DialogButton}" Content="Cancel" IsCancel="True" />
+    </StackPanel>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="14" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Original" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <TextBox x:Name="OriginalBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" FontFamily="Cambria" FontSize="14"
+                 Background="{DynamicResource SurfaceAltBrush}" AutomationProperties.Name="Original passage" />
+      </DockPanel>
+      <DockPanel Grid.Column="2">
+        <TextBlock DockPanel.Dock="Top" Text="Suggestion" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <TextBox x:Name="SuggestionBox" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" FontFamily="Cambria" FontSize="14"
+                 AutomationProperties.Name="Suggested passage" />
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</hc:Window>

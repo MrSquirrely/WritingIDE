@@ -10,6 +10,7 @@ public sealed class NovelProject : ObservableObject {
         Chapters.CollectionChanged += OnCollectionChanged;
         Entities.CollectionChanged += OnCollectionChanged;
         Books.CollectionChanged += OnCollectionChanged;
+        PlotThreads.CollectionChanged += OnCollectionChanged;
         CustomDictionary.CollectionChanged += (_, _) => MarkDirty();
         DisabledRules.CollectionChanged += (_, _) => MarkDirty();
     }
@@ -53,6 +54,9 @@ public sealed class NovelProject : ObservableObject {
 
     /// <summary>The books of a series, in reading order. Empty for a single novel.</summary>
     public ObservableCollection<Book> Books { get; } = [];
+
+    /// <summary>Plot threads and foreshadowing tracked across the manuscript.</summary>
+    public ObservableCollection<PlotThread> PlotThreads { get; } = [];
 
     public ObservableCollection<string> CustomDictionary { get; } = [];
 

@@ -80,7 +80,8 @@ public sealed class CommentMargin : Border {
     }
 
     private void SyncCards() {
-        HashSet<ChapterComment> current = [.. _owner.Chapter.Comments];
+        // Bookmarks live in the gutter, not the margin.
+        HashSet<ChapterComment> current = [.. _owner.Chapter.Comments.Where(static comment => comment.Kind != MarkerKind.Bookmark)];
         foreach (ChapterComment removed in _cards.Keys.Where(comment => !current.Contains(comment)).ToList()) {
             _canvas.Children.Remove(_cards[removed].Card);
             removed.PropertyChanged -= OnCommentPropertyChanged;
@@ -96,8 +97,19 @@ public sealed class CommentMargin : Border {
         QueueReposition();
     }
 
+    /// <summary>False when the editor is too narrow for the margin (a split pane): comments stay shaded and in the Outline.</summary>
+    public bool HasRoom {
+        get;
+        set {
+            if (field != value) {
+                field = value;
+                UpdateVisibility();
+            }
+        }
+    } = true;
+
     private void UpdateVisibility() {
-        Visibility = IsWanted && (_cards.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
+        Visibility = IsWanted && HasRoom && (_cards.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnCommentPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -133,14 +145,21 @@ public sealed class CommentMargin : Border {
             }
         };
 
+        bool isThread = comment.Kind == MarkerKind.PlotThread;
         TextBlock header = new() {
             FontSize = 11,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Text = $"{(comment.Author.Length > 0 ? comment.Author + "  \u00B7  " : "")}{comment.CreatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}",
+            Text = isThread
+                ? $"\u25C6 {comment.ThreadRole}: {_owner.Shell.Project?.PlotThreads.FirstOrDefault(thread => thread.Id == comment.ThreadId)?.Name ?? "(deleted thread)"}"
+                : $"{(comment.Author.Length > 0 ? comment.Author + "  \u00B7  " : "")}{comment.CreatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}",
             Cursor = Cursors.Hand,
-            ToolTip = "Show the commented text"
+            ToolTip = isThread ? "A plot-thread passage. Click to show it; open Analyze > Plot Threads for the whole thread." : "Show the commented text"
         };
-        header.SetResourceReference(TextBlock.ForegroundProperty, "SubtleTextBrush");
+        header.SetResourceReference(TextBlock.ForegroundProperty, isThread ? "EventBrush" : "SubtleTextBrush");
+        if (isThread) {
+            header.FontWeight = FontWeights.SemiBold;
+            HandyControl.Controls.InfoElement.SetPlaceholder(box, "Note (optional)");
+        }
         header.MouseLeftButtonDown += (_, e) => {
             _editor.RevealComment(comment);
             e.Handled = true;
@@ -151,14 +170,16 @@ public sealed class CommentMargin : Border {
             comment.IsResolved = !comment.IsResolved;
             resolve.ToolTip = comment.IsResolved ? "Reopen" : "Resolve";
         };
-        Button delete = CreateIconButton("\uE74D", "Delete comment");
+        Button delete = CreateIconButton("\uE74D", isThread ? "Remove from the plot thread" : "Delete comment");
         delete.Click += (_, _) => _owner.DeleteComment(comment);
 
         DockPanel top = new();
         DockPanel.SetDock(delete, Dock.Right);
         DockPanel.SetDock(resolve, Dock.Right);
         top.Children.Add(delete);
-        top.Children.Add(resolve);
+        if (!isThread) {
+            top.Children.Add(resolve);
+        }
         top.Children.Add(header);
 
         TextBlock orphaned = new() { Text = "The commented text was deleted.", FontSize = 11, FontStyle = FontStyles.Italic, Margin = new Thickness(0, 2, 0, 0) };
@@ -178,8 +199,11 @@ public sealed class CommentMargin : Border {
             Child = content,
             Opacity = comment.IsResolved ? 0.55 : 1
         };
-        card.SetResourceReference(BackgroundProperty, "CommentCardBrush");
-        card.SetResourceReference(BorderBrushProperty, "CommentCardBorderBrush");
+        card.SetResourceReference(BackgroundProperty, isThread ? "PanelBrush" : "CommentCardBrush");
+        card.SetResourceReference(BorderBrushProperty, isThread ? "EventBrush" : "CommentCardBorderBrush");
+        if (isThread) {
+            card.BorderThickness = new Thickness(3, 1, 1, 1);
+        }
         card.SizeChanged += (_, _) => QueueReposition();
         return (card, box);
     }

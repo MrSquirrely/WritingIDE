@@ -38,8 +38,11 @@ public sealed class Chapter : ObservableObject {
     /// <summary>When the chapter happens in story time, free text ("Day 3", "Spring 1204", "12 May 2024"). Drives the timeline.</summary>
     public string StoryDate { get; set => SetProperty(ref field, value); } = "";
 
-    /// <summary>Margin comments anchored to ranges of the text.</summary>
+    /// <summary>Comments, bookmarks and plot-thread markers anchored to ranges of the text.</summary>
     public ObservableCollection<ChapterComment> Comments { get; } = [];
+
+    /// <summary>Revision mode: changes since the revision baseline are shown inline to accept or reject.</summary>
+    public bool TrackRevisions { get; set => SetProperty(ref field, value); }
 
     /// <summary>The chapter text as last synchronised from the editor (or loaded from disk).</summary>
     public string Text { get; set => SetProperty(ref field, value); } = "";
@@ -67,12 +70,39 @@ public sealed class Chapter : ObservableObject {
     }
 }
 
+/// <summary>What an anchored marker in a chapter is.</summary>
+public enum MarkerKind {
+    /// <summary>A margin comment.</summary>
+    Comment,
+
+    /// <summary>A bookmark (Ctrl+K, Ctrl+K).</summary>
+    Bookmark,
+
+    /// <summary>A plot-thread marker: a setup, development or payoff of a <see cref="PlotThread"/>.</summary>
+    PlotThread
+}
+
+/// <summary>The part a passage plays in a plot thread.</summary>
+public enum ThreadRole {
+    Setup,
+    Development,
+    Payoff
+}
+
 /// <summary>
-/// A comment (margin note) on a range of a chapter. The range is tracked live by the editor; on disk it is stored as
-/// an offset plus the commented text, so it can be found again if the chapter was edited elsewhere.
+/// An anchored marker on a range of a chapter: a comment (margin note), a bookmark or a plot-thread marker. The range
+/// is tracked live by the editor; on disk it is stored as an offset plus the text it covers, so it can be found again
+/// if the chapter was edited elsewhere.
 /// </summary>
 public sealed class ChapterComment : ObservableObject {
     public Guid Id { get; init; } = Guid.NewGuid();
+
+    public MarkerKind Kind { get; init; } = MarkerKind.Comment;
+
+    /// <summary>For <see cref="MarkerKind.PlotThread"/>: the thread this passage belongs to.</summary>
+    public Guid? ThreadId { get; set => SetProperty(ref field, value); }
+
+    public ThreadRole ThreadRole { get; set => SetProperty(ref field, value); }
 
     /// <summary>Start of the commented text. Updated without change notification (the editor owns the live position).</summary>
     public int Offset { get; set; }

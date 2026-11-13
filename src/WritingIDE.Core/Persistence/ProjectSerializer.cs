@@ -52,12 +52,16 @@ public static class ProjectSerializer {
                 Synopsis = chapterDto.Synopsis,
                 Status = chapterDto.Status,
                 PointOfView = chapterDto.PointOfView ?? "",
+                TrackRevisions = chapterDto.TrackRevisions,
                 StoryDate = chapterDto.StoryDate ?? "",
                 Text = getText(chapterDto)
             };
             foreach (CommentDto commentDto in chapterDto.Comments ?? []) {
                 chapter.Comments.Add(new ChapterComment {
                     Id = commentDto.Id,
+                    Kind = commentDto.Kind,
+                    ThreadId = commentDto.Thread,
+                    ThreadRole = commentDto.Role,
                     Offset = commentDto.Offset,
                     Length = commentDto.Length,
                     AnchorText = commentDto.Anchor,
@@ -91,6 +95,9 @@ public static class ProjectSerializer {
         }
         foreach (string rule in dto.DisabledRules) {
             project.DisabledRules.Add(rule);
+        }
+        foreach (PlotThreadDto thread in dto.PlotThreads ?? []) {
+            project.PlotThreads.Add(new PlotThread(thread.Name) { Id = thread.Id, Description = thread.Description, Status = thread.Status });
         }
         return project;
     }
@@ -153,8 +160,12 @@ public static class ProjectSerializer {
                 Status = chapter.Status,
                 PointOfView = NullIfEmpty(chapter.PointOfView),
                 StoryDate = NullIfEmpty(chapter.StoryDate),
+                TrackRevisions = chapter.TrackRevisions,
                 Comments = chapter.Comments.Count == 0 ? null : chapter.Comments.Select(static comment => new CommentDto {
                     Id = comment.Id,
+                    Kind = comment.Kind,
+                    Thread = comment.ThreadId,
+                    Role = comment.ThreadRole,
                     Offset = comment.Offset,
                     Length = comment.Length,
                     Anchor = comment.AnchorText,
@@ -178,7 +189,13 @@ public static class ProjectSerializer {
                 MapY = entity.MapY
             }).ToList(),
             Dictionary = project.CustomDictionary.ToList(),
-            DisabledRules = project.DisabledRules.ToList()
+            DisabledRules = project.DisabledRules.ToList(),
+            PlotThreads = project.PlotThreads.Count == 0 ? null : project.PlotThreads.Select(static thread => new PlotThreadDto {
+                Id = thread.Id,
+                Name = thread.Name,
+                Description = thread.Description,
+                Status = thread.Status
+            }).ToList()
         };
     }
 
@@ -241,6 +258,9 @@ public static class ProjectSerializer {
         public List<EntityDto> Entities { get; set; } = [];
         public List<string> Dictionary { get; set; } = [];
         public List<string> DisabledRules { get; set; } = [];
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<PlotThreadDto>? PlotThreads { get; set; }
     }
 
     internal sealed class BookDto {
@@ -265,6 +285,9 @@ public static class ProjectSerializer {
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<CommentDto>? Comments { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool TrackRevisions { get; set; }
 
         /// <summary>Only in recovery snapshots; normal project files keep chapter text in Manuscript/*.txt.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -295,8 +318,25 @@ public static class ProjectSerializer {
         public string Label { get; set; } = "";
     }
 
+    internal sealed class PlotThreadDto {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public PlotThreadStatus Status { get; set; }
+    }
+
     internal sealed class CommentDto {
         public Guid Id { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public MarkerKind Kind { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? Thread { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ThreadRole Role { get; set; }
+
         public int Offset { get; set; }
         public int Length { get; set; }
         public string Anchor { get; set; } = "";

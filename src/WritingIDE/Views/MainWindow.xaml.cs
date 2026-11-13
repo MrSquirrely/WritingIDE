@@ -24,7 +24,68 @@ public partial class MainWindow : HandyControl.Controls.Window {
             else if ((e.PropertyName == nameof(MainViewModel.ActiveDocument)) && viewModel.IsDistractionFree && (viewModel.ActiveChapter is null)) {
                 viewModel.IsDistractionFree = false;
             }
+            else if (e.PropertyName == nameof(MainViewModel.SecondaryView)) {
+                UpdateSplitPane();
+            }
         };
+    }
+
+    /// <summary>Shows or hides the second editor pane (half the width of the editor area by default).</summary>
+    private void UpdateSplitPane() {
+        bool open = (_viewModel.SecondaryView is not null) && !_viewModel.IsDistractionFree;
+        SplitPane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        SplitSplitterColumn.Width = open ? new GridLength(5) : new GridLength(0);
+        SplitPaneColumn.Width = open ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        SplitPaneColumn.MinWidth = open ? 200 : 0;
+    }
+
+    private void OnShowBookmarks(object sender, RoutedEventArgs e) {
+        _viewModel.RefreshBookmarks();
+        _viewModel.SelectedBottomTab = MainViewModel.BookmarksTab;
+    }
+
+    private void OnShowTaskList(object sender, RoutedEventArgs e) {
+        _viewModel.SelectedBottomTab = MainViewModel.TaskListTab;
+    }
+
+    private void OnShowOutline(object sender, RoutedEventArgs e) {
+        OutlineTab.IsSelected = true;
+        _viewModel.ActiveChapter?.RefreshOutline();
+    }
+
+    /// <summary>Clicking an outline entry goes there.</summary>
+    private void OnOutlineSelected(object sender, SelectionChangedEventArgs e) {
+        if ((((ListBox)sender).SelectedItem is OutlineItem item) && (_viewModel.ActiveChapter is ChapterDocumentViewModel chapter)) {
+            chapter.Select(item.Offset, item.Length);
+            ((ListBox)sender).SelectedItem = null;
+        }
+    }
+
+    /// <summary>The Extensions menu lists the commands extensions registered.</summary>
+    private void OnExtensionsMenuOpened(object sender, RoutedEventArgs e) {
+        if (!ReferenceEquals(e.OriginalSource, ExtensionsMenu)) {
+            return;
+        }
+        ExtensionsMenu.Items.Clear();
+        foreach (WritingIDE.Sdk.PluginCommand command in _viewModel.Extensions.Commands) {
+            WritingIDE.Sdk.PluginCommand captured = command;
+            MenuItem item = new() { Header = new TextBlock { Text = command.Title }, ToolTip = command.Description.Length > 0 ? command.Description : null, IsEnabled = _viewModel.HasProject };
+            item.Click += (_, _) => {
+                try {
+                    captured.Execute(_viewModel.Extensions.ProjectApi);
+                }
+                catch (Exception exception) {
+                    _viewModel.Log($"warning: extension command '{captured.Title}' failed: {exception.Message}");
+                    MainViewModel.Notify($"'{captured.Title}' failed: {exception.Message}", MainViewModel.NotificationKind.Error);
+                }
+            };
+            ExtensionsMenu.Items.Add(item);
+        }
+        if (ExtensionsMenu.Items.Count == 0) {
+            ExtensionsMenu.Items.Add(new MenuItem { Header = "(no extension commands)", IsEnabled = false });
+        }
+        ExtensionsMenu.Items.Add(new Separator());
+        ExtensionsMenu.Items.Add(new MenuItem { Header = "_Manage Extensions and API...", Command = _viewModel.ExtensionsCommand });
     }
 
     private readonly List<(DefinitionBase Definition, GridLength Size)> _savedSizes = [];
@@ -53,6 +114,7 @@ public partial class MainWindow : HandyControl.Controls.Window {
                 row.Height = new GridLength(0);
             }
             DocumentWell.Tag = "Focus";
+            UpdateSplitPane();
             _savedState = WindowState;
             // HandyControl's IsFullScreen fails here (negative CaptionHeight), so: no title bar, maximized.
             SetChromeSafely(() => {
@@ -72,6 +134,7 @@ public partial class MainWindow : HandyControl.Controls.Window {
                 }
             }
             DocumentWell.Tag = null;
+            UpdateSplitPane();
             SetChromeSafely(() => {
                 ShowNonClientArea = true;
                 WindowState = _savedState;
@@ -245,7 +308,11 @@ public partial class MainWindow : HandyControl.Controls.Window {
                 break;
             case ChapterNode { Chapter: Chapter chapter }:
                 menu.Items.Add(CreateItem("Open", () => _viewModel.OpenChapter(chapter), "\uE8A5", "Enter", bold: true));
+                menu.Items.Add(CreateItem("Open in Second Pane", () => _viewModel.OpenChapterInSplitPane(chapter), "\uE89F"));
                 menu.Items.Add(new Separator());
+                if (_viewModel.NextChapterInBook(chapter) is Chapter next) {
+                    menu.Items.Add(CreateItem($"Merge with '{next.Title}'", () => _viewModel.MergeWithNext(chapter), "\uE8C8"));
+                }
                 menu.Items.Add(CreateItem("Move Up", () => _viewModel.MoveChapter(chapter, -1), "\uE74A"));
                 menu.Items.Add(CreateItem("Move Down", () => _viewModel.MoveChapter(chapter, 1), "\uE74B"));
                 if (project.IsSeries && (project.Books.Count > 1)) {
@@ -262,6 +329,7 @@ public partial class MainWindow : HandyControl.Controls.Window {
                 break;
             case EntityNode { Entity: StoryEntity entity }:
                 menu.Items.Add(CreateItem("Open", () => _viewModel.OpenEntity(entity), entity.KindInfo.Glyph, "Enter", bold: true));
+                menu.Items.Add(CreateItem("Open in Second Pane", () => _viewModel.OpenEntityInSplitPane(entity), "\uE89F"));
                 menu.Items.Add(CreateItem("Find All References", () => _viewModel.FindReferences(entity), "\uE721", "Shift+F12"));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(CreateItem("Rename...", () => _viewModel.RenameEntity(entity), "\uE8AC", "F2"));

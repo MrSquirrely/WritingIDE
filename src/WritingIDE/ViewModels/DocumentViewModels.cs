@@ -42,6 +42,14 @@ public abstract class DocumentViewModel(MainViewModel shell) : ObservableObject 
     public virtual void OnActivated() {
     }
 
+    /// <summary>A second, independent view of this document for the split pane, or null if it cannot be split.</summary>
+    public virtual FrameworkElement? CreateSecondaryView() {
+        return null;
+    }
+
+    public virtual void OnSecondaryViewClosed(FrameworkElement view) {
+    }
+
     public virtual void OnClosed() {
     }
 }
@@ -60,7 +68,7 @@ public sealed class MentionSummary(StoryEntity entity, int count) {
 }
 
 /// <summary>A chapter open in the manuscript editor.</summary>
-public sealed class ChapterDocumentViewModel : DocumentViewModel {
+public sealed partial class ChapterDocumentViewModel : DocumentViewModel {
     private readonly DispatcherTimer _analysisTimer;
     private CancellationTokenSource? _analysisCancellation;
     private ManuscriptEditor? _editor;
@@ -93,6 +101,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
             }
         });
         AddCommentCommand = new RelayCommand(() => AddComment(_editor?.SelectionStart ?? 0, _editor?.SelectionLength ?? 0));
+        InitializeWritingTools();
         Document.UndoStack.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(UndoStack.IsOriginalFile)) {
                 OnPropertyChanged(nameof(IsDirty));
@@ -161,7 +170,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
     /// <summary>Live positions of this chapter's comments; AvalonEdit keeps them in place as the text is edited.</summary>
     public TextSegmentCollection<CommentSegment> CommentSegments { get; }
 
-    public int OpenCommentCount => Chapter.Comments.Count(static comment => !comment.IsResolved);
+    public int OpenCommentCount => Chapter.Comments.Count(static comment => (comment.Kind == MarkerKind.Comment) && !comment.IsResolved);
 
     public ObservableCollection<ChapterSnapshot> Snapshots { get; } = [];
 
@@ -185,6 +194,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
         _margin = new CommentMargin(this, _editor) { IsWanted = Shell.ShowCommentMargin && !Shell.IsDistractionFree };
         _editor.SetFocusMode(Shell.IsDistractionFree);
         DockPanel host = new() { LastChildFill = true };
+        host.SizeChanged += (_, e) => _margin.HasRoom = e.NewSize.Width >= 640;
         DockPanel.SetDock(_margin, Dock.Right);
         host.Children.Add(_margin);
         host.Children.Add(_editor);
@@ -198,7 +208,9 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
         }
         _editor?.SetCommentsVisible(Shell.ShowCommentMargin && !Shell.IsDistractionFree);
         _editor?.SetFocusMode(Shell.IsDistractionFree);
-        _editor?.RefreshLenses();
+        foreach (ManuscriptEditor editor in AllEditors) {
+            editor.RefreshLenses();
+        }
     }
 
     public override void OnActivated() {
@@ -260,7 +272,10 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
             CommentSegments.Clear();
         }
         OnPropertyChanged(nameof(OpenCommentCount));
-        _editor?.TextArea.TextView.Redraw();
+        foreach (ManuscriptEditor editor in AllEditors) {
+            editor.RedrawMarkers();
+        }
+        RefreshOutline();
     }
 
     /// <summary>Copies the live comment positions (and the text they cover) back to the model, for saving.</summary>
@@ -389,7 +404,10 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
                 .ToList();
             // Report first: the name lenses read the project-wide counts this updates.
             Shell.ReportAnalysis(Chapter, text, result);
-            _editor?.ApplyAnalysis(result);
+            foreach (ManuscriptEditor editor in AllEditors) {
+                editor.ApplyAnalysis(result);
+            }
+            UpdateAfterAnalysis(text);
         }
         catch (OperationCanceledException) {
             // Superseded by a newer analysis.
@@ -417,6 +435,7 @@ public sealed class ChapterDocumentViewModel : DocumentViewModel {
         SyncComments();
         Chapter.Comments.CollectionChanged -= OnCommentsChanged;
         _margin?.Detach();
+        DetachSecondaryEditors();
         _editor?.Detach();
     }
 }
@@ -517,6 +536,10 @@ public sealed class EntityDocumentViewModel : DocumentViewModel {
         return new EntityEditorView { DataContext = this };
     }
 
+    public override FrameworkElement? CreateSecondaryView() {
+        return new EntityEditorView { DataContext = this };
+    }
+
     public override void OnActivated() {
         RefreshAppearances();
         RefreshRelationships();
@@ -565,6 +588,10 @@ public sealed class StoryBibleDocumentViewModel : DocumentViewModel {
     public override Brush GlyphBrush => Visuals.ProjectBrush;
 
     protected override FrameworkElement CreateView() {
+        return new StoryBibleView { DataContext = this };
+    }
+
+    public override FrameworkElement? CreateSecondaryView() {
         return new StoryBibleView { DataContext = this };
     }
 }

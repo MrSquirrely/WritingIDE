@@ -79,6 +79,29 @@ internal static class Continuity {
         return number % 10 == 0 ? Tens[number / 10] : $"{Tens[number / 10]}-{Units[number % 10]}";
     }
 
+    private const string NotAnAge = @"(?![\p{L}\d-]|\s+(?:minutes?|hours?|days?|weeks?|months?|steps?|feet|foot|miles?|yards?|times?|percent|paces?|seconds?|of|in|and|or|to|more|people|men|women))";
+
+    /// <summary>
+    /// Ages written next to a character's name ("Rowan, thirty-nine,", "the 41-year-old Rowan", "Rowan was 35"), once
+    /// each, ignoring numbers under 10.
+    /// </summary>
+    public static IEnumerable<(Group Age, int Written)> FindStatedAges(string text, StoryEntity character) {
+        string names = NamePattern(character);
+        Regex[] patterns = [
+            new($@"{names},\s+(?:who\s+was\s+|aged\s+|age\s+)?(?<age>{Number})(?:,|\s+years?\s+old)", RegexOptions.IgnoreCase),
+            new($@"\b(?<age>{Number})-year-old\s+(?:[\p{{L}}]+\s+){{0,2}}?{names}", RegexOptions.IgnoreCase),
+            new($@"{names}\s+(?:was|is|had\s+turned|turned|had\s+been)\s+(?<age>{Number})(?:\s+years?\s+old)?{NotAnAge}", RegexOptions.IgnoreCase)
+        ];
+        HashSet<int> reported = [];
+        foreach (Match match in patterns.SelectMany(pattern => pattern.Matches(text))) {
+            Group group = match.Groups["age"];
+            int? written = ParseNumber(group.Value);
+            if ((written is int value) && (value >= 10) && reported.Add(group.Index)) {
+                yield return (group, value);
+            }
+        }
+    }
+
     /// <summary>True when the offset is inside a quotation in its paragraph (dialogue or reported speech).</summary>
     public static bool IsInsideQuotes(string text, int offset) {
         int paragraphStart = offset;
@@ -175,8 +198,6 @@ public sealed class AppearanceContinuityRule() : GrammarRule("NW4003", "Appearan
 /// <summary>NW4004: a character's age that contradicts the Age attribute.</summary>
 public sealed class AgeContinuityRule() : GrammarRule("NW4004", "Age continuity", RuleCategory.Continuity, DiagnosticSeverity.Warning,
     "Checks ages written next to a character's name ('Rowan, thirty-nine,', 'the 41-year-old Rowan') against the character's Age attribute.") {
-    private const string NotAnAge = @"(?![\p{L}\d-]|\s+(?:minutes?|hours?|days?|weeks?|months?|steps?|feet|foot|miles?|yards?|times?|percent|paces?|seconds?|of|in|and|or|to|more|people|men|women))";
-
     public override IEnumerable<GrammarDiagnostic> Analyze(AnalysisContext context) {
         foreach (StoryEntity character in Continuity.Characters(context)) {
             string? ageText = Continuity.Attribute(character, "Age");
@@ -185,18 +206,8 @@ public sealed class AgeContinuityRule() : GrammarRule("NW4004", "Age continuity"
                 continue;
             }
             int age = int.Parse(ageDigits.Value, CultureInfo.InvariantCulture);
-            string names = Continuity.NamePattern(character);
-            string number = Continuity.Number;
-            Regex[] patterns = [
-                new($@"{names},\s+(?:who\s+was\s+|aged\s+|age\s+)?(?<age>{number})(?:,|\s+years?\s+old)", RegexOptions.IgnoreCase),
-                new($@"\b(?<age>{number})-year-old\s+(?:[\p{{L}}]+\s+){{0,2}}?{names}", RegexOptions.IgnoreCase),
-                new($@"{names}\s+(?:was|is|had\s+turned|turned|had\s+been)\s+(?<age>{number})(?:\s+years?\s+old)?{NotAnAge}", RegexOptions.IgnoreCase)
-            ];
-            HashSet<int> reported = [];
-            foreach (Match match in patterns.SelectMany(pattern => pattern.Matches(context.Text))) {
-                Group group = match.Groups["age"];
-                int? written = Continuity.ParseNumber(group.Value);
-                if ((written is null) || (written == age) || (written < 10) || !reported.Add(group.Index)) {
+            foreach ((Group group, int written) in Continuity.FindStatedAges(context.Text, character)) {
+                if (written == age) {
                     continue;
                 }
                 string replacement = char.IsDigit(group.Value[0]) ? age.ToString(CultureInfo.InvariantCulture) : MatchCase(group.Value, Continuity.ToWords(age));

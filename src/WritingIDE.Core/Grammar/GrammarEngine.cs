@@ -43,7 +43,10 @@ public sealed class GrammarEngine(ISpellingProvider? spelling = null) {
         new AppearanceContinuityRule(),
         new AgeContinuityRule(),
         new PronounContinuityRule(),
-        new DeathContinuityRule()
+        new DeathContinuityRule(),
+        new ItemOwnershipRule(),
+        new BirthYearAgeRule(),
+        new RelationshipContinuityRule()
     ];
 
     public ISpellingProvider? Spelling { get; } = spelling;

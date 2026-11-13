@@ -31,11 +31,13 @@ using HcMessageBox = HandyControl.Controls.MessageBox;
 namespace WritingIDE.ViewModels;
 
 /// <summary>The IDE shell: project, solution explorer, document well, error list and output.</summary>
-public sealed class MainViewModel : ObservableObject {
+public sealed partial class MainViewModel : ObservableObject {
     public const int ErrorListTab = 0;
     public const int OutputTab = 1;
     public const int FindResultsTab = 2;
     public const int GitTab = 3;
+    public const int BookmarksTab = 4;
+    public const int TaskListTab = 5;
 
     private readonly WindowsSpellingProvider _spelling = new();
     private readonly Dictionary<Guid, List<ErrorItem>> _diagnostics = new();
@@ -61,7 +63,7 @@ public sealed class MainViewModel : ObservableObject {
         OpenProjectCommand = new RelayCommand(parameter => OpenProject(parameter as string));
         SaveAllCommand = new RelayCommand(SaveAll, () => HasProject);
         CloseProjectCommand = new RelayCommand(() => CloseProject(), () => HasProject);
-        ExportCommand = new RelayCommand(ExportManuscript, () => HasProject);
+        ExportCommand = new RelayCommand(ShowExportDialog, () => HasProject);
         ExitCommand = new RelayCommand(() => Application.Current.MainWindow?.Close());
         AddChapterCommand = new RelayCommand(() => AddNewItem(null, chapter: true), () => HasProject);
         AddEntityCommand = new RelayCommand(parameter => AddNewItem(ParseKind(parameter), chapter: false), _ => HasProject);
@@ -125,6 +127,8 @@ public sealed class MainViewModel : ObservableObject {
         ApplyAutosaveInterval();
         SetAutosaveCommand = new RelayCommand(parameter => AutosaveMinutes = int.TryParse(parameter as string, out int minutes) ? minutes : 0);
         Git = new GitViewModel(this);
+        Ai = new AiService(this);
+        InitializeWritingTools();
 
         Log("WritingIDE ready.");
         if (Settings.Harper.Enabled) {
@@ -244,7 +248,7 @@ public sealed class MainViewModel : ObservableObject {
             document?.SyncComments();
             string text = GetChapterText(chapter);
             LineIndex lines = new(text);
-            foreach (ChapterComment comment in chapter.Comments.OrderBy(static comment => comment.Offset)) {
+            foreach (ChapterComment comment in chapter.Comments.Where(static comment => comment.Kind == MarkerKind.Comment).OrderBy(static comment => comment.Offset)) {
                 if (comment.IsResolved) {
                     resolved++;
                     continue;
@@ -372,7 +376,7 @@ public sealed class MainViewModel : ObservableObject {
 
     /// <summary>Harper started or stopped: swap the engine's plugin rules and re-analyze.</summary>
     private void OnPluginStateChanged() {
-        Grammar.SetPluginRules(Harper.IsRunning ? [new HarperRule(Harper)] : []);
+        ApplyPluginRules();
         Log(Harper.IsRunning ? $"Harper plugin enabled: {Harper.Status}." : "Harper plugin disabled.");
         ReanalyzeOpenDocuments();
         if (Project is not null) {
@@ -400,6 +404,7 @@ public sealed class MainViewModel : ObservableObject {
 
     public void Shutdown() {
         Harper.Dispose();
+        LocalApi.Stop();
     }
 
     // =====================================================================
@@ -763,7 +768,12 @@ public sealed class MainViewModel : ObservableObject {
         RefreshErrorList();
         UpdateProjectStatistics();
         RaiseProjectChanged();
+        CloseSplitPane();
+        BookmarkItems.Clear();
+        TaskItems.Clear();
+        _tasks.Clear();
         ShowStartPage();
+        Extensions.RaiseProjectClosed();
         Git.RequestRefresh();
         return true;
     }
@@ -819,6 +829,7 @@ public sealed class MainViewModel : ObservableObject {
                 Log($"Saved '{Project.Name}' ({Project.Chapters.Count} chapters, {Project.Entities.Count} story elements).");
             }
             Git.RequestRefresh();
+            Extensions.RaiseProjectSaved();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
             ShowError($"Could not save the project.\n\n{exception.Message}");
@@ -863,6 +874,9 @@ public sealed class MainViewModel : ObservableObject {
             OpenChapter(first);
         }
         _ = AnalyzeAllAsync(quiet: true);
+        _tasks.Clear();
+        RefreshBookmarks();
+        Extensions.RaiseProjectOpened();
     }
 
     private void OnProjectPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -926,7 +940,7 @@ public sealed class MainViewModel : ObservableObject {
     private GrammarOptions WithPosition(GrammarOptions options, Chapter chapter) {
         List<Chapter> ordered = OrderedChapters.ToList();
         int index = ordered.IndexOf(chapter);
-        return index < 0 ? options : options with { Position = new ManuscriptPosition(index, ordered.Select(static c => c.Title).ToList()) };
+        return index < 0 ? options : options with { Position = new ManuscriptPosition(index, ordered.Select(static c => c.Title).ToList()), StoryDate = chapter.StoryDate };
     }
 
     /// <summary>Opens (or re-opens) a word diff in a document tab.</summary>
@@ -958,6 +972,9 @@ public sealed class MainViewModel : ObservableObject {
     }
 
     private void RemoveDocument(DocumentViewModel document) {
+        if (SecondaryDocument == document) {
+            CloseSplitPane();
+        }
         document.OnClosed();
         Documents.Remove(document);
         if (ActiveDocument == document) {
@@ -1233,11 +1250,15 @@ public sealed class MainViewModel : ObservableObject {
         }).ToList();
         _wordCounts[chapter.Id] = result.Statistics.Words;
         _mentionCounts[chapter.Id] = result.Mentions.GroupBy(static mention => mention.Entity.Id).ToDictionary(static group => group.Key, static group => group.Count());
+        _tasks[chapter.Id] = TaskScanner.Scan(chapter, text);
+        RefreshTaskList();
         RefreshErrorList();
         UpdateProjectStatistics();
         foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
             if (document.Chapter != chapter) {
-                document.Editor?.RefreshLenses();
+                foreach (Editor.ManuscriptEditor editor in document.AllEditors) {
+                    editor.RefreshLenses();
+                }
             }
         }
     }
@@ -1466,30 +1487,6 @@ public sealed class MainViewModel : ObservableObject {
     // =====================================================================
     // Misc
     // =====================================================================
-
-    private void ExportManuscript() {
-        if (Project is null) {
-            return;
-        }
-        SaveFileDialog dialog = new() {
-            Title = "Export Manuscript",
-            FileName = Project.Name + ".md",
-            InitialDirectory = Project.DirectoryPath,
-            Filter = "Markdown (*.md)|*.md|Plain text (*.txt)|*.txt"
-        };
-        if (dialog.ShowDialog(Application.Current.MainWindow) != true) {
-            return;
-        }
-        try {
-            File.WriteAllText(dialog.FileName, ManuscriptTools.Compile(Project, GetChapterText), Encoding.UTF8);
-            Log($"Exported manuscript to {dialog.FileName}");
-            Notify($"Exported the manuscript to {Path.GetFileName(dialog.FileName)}.", NotificationKind.Success);
-            StatusText = "Manuscript exported";
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
-            ShowError($"Could not export the manuscript.\n\n{exception.Message}");
-        }
-    }
 
     private void ShowOptions() {
         if (Project is null) {
