@@ -14,7 +14,15 @@ A project is either a **novel** or a **series**. A series is like a solution wit
 dotnet run --project src/WritingIDE
 ```
 
-To open a project straight away, pass its path: `WritingIDE.exe path\to\MyNovel.novproj`. Use **File > New Project > Sample Novel** for a demo project with deliberate mistakes in it.
+To open a project straight away, pass its path: `WritingIDE.exe path\to\MyNovel.novproj`. Use **File > New Project > Sample Novel** for "The Lighthouse Keeper", a short mystery that shows off every feature:
+
+- **Chapter 1** is full of deliberate grammar mistakes (Error List, Ctrl+. fixes) and has margin comments and a plot-thread setup.
+- **Chapter 2** has its POV set, a labelled scene break, a TODO and a `[TK]`, a "First draft" snapshot to compare with, and revision mode already on, so tracked changes show inline.
+- **Chapter 3** has one deliberate continuity slip for each continuity rule (NW4002–NW4007, NW4009), a resolved comment, a bookmark and a first-person logbook scene.
+- **Chapter 4** is a flashback, set in 1888, which the Timeline flags; it also trips NW4008, age from birth year.
+- **Chapter 5** is only an outline: try right-click > Move to Story Bible.
+
+The story elements have attributes and relationships, so the Relationship Map and Character Statistics have something to show. The three plot threads cover a thread never paid off, one paid off before its setup, and a clean one. The story bible holds world rules and a chapter plan, and one event is left unplaced for the Timeline to point out.
 
 ```bash
 dotnet test

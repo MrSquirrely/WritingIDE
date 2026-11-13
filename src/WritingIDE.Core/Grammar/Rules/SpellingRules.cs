@@ -43,11 +43,18 @@ public sealed class SpellingRule() : GrammarRule("NW1001", "Spelling", RuleCateg
 /// <summary>NW4001: a story element's name written with the wrong capitalisation ("elena" for "Elena").</summary>
 public sealed class EntityCasingRule() : GrammarRule("NW4001", "Story element capitalization", RuleCategory.Story, DiagnosticSeverity.Warning,
     "Detects names of characters, places and other story elements written in the wrong case.") {
+    private static readonly HashSet<string> FunctionWords = new(StringComparer.OrdinalIgnoreCase) {
+        "the", "an", "of", "and", "or", "in", "on", "at", "to", "for", "by", "with", "from", "de", "la", "le", "von", "van", "der"
+    };
+
     public override IEnumerable<GrammarDiagnostic> Analyze(AnalysisContext context) {
         Dictionary<string, string> properNames = new(StringComparer.OrdinalIgnoreCase);
+        // Aliases written in lower case ("compass") are meant to be used that way.
+        HashSet<string> lowercaseNames = new(context.Options.Entities.Names.Select(static entry => entry.Name).Where(static name => name.Length > 0 && char.IsLower(name[0])), StringComparer.Ordinal);
         foreach ((string name, _) in context.Options.Entities.Names) {
             foreach (string part in name.Split(' ', StringSplitOptions.RemoveEmptyEntries)) {
-                if ((part.Length > 1) && char.IsUpper(part[0])) {
+                // "The Reckoning", "Lord of the Isles": articles and prepositions in a name are not names on their own.
+                if ((part.Length > 1) && char.IsUpper(part[0]) && !FunctionWords.Contains(part) && !lowercaseNames.Contains(part.ToLowerInvariant())) {
                     properNames.TryAdd(part, part);
                 }
             }

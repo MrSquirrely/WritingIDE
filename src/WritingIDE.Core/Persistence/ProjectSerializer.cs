@@ -222,6 +222,8 @@ public static class ProjectSerializer {
         NovelProject project = template.Create(name, author);
         project.FilePath = filePath;
         Save(project);
+        template.AfterCreate(project);
+        project.IsDirty = false;
         return project;
     }
 
