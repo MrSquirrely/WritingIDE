@@ -79,7 +79,7 @@ The **Git Changes** tool window (bottom panel, or click the branch in the status
 - A commit box with **Commit All** and **Commit All and Push**. Committing saves first, so the commit matches what you see.
 - **Pull** (fast-forward only), **Push** (sets the upstream on the first push) and **Add remote** to connect GitHub or another host.
 - A list of changed files shown by chapter name. Double-click one for a **word diff** against the last commit (`[-old-]{+new+}`, coloured), which is far more readable for prose than line diffs.
-- The recent history.
+- The recent history. Double-click a commit (or right-click, **View Changes**) to open it in a tab: its message, the files it changed (named by chapter, with words added and removed), and a word diff of each, so you can read exactly what a commit did to the manuscript.
 
 It uses the Git for Windows command line, and Git Credential Manager handles sign-in for push and pull.
 

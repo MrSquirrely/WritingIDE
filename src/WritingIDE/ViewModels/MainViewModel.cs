@@ -953,6 +953,16 @@ public sealed partial class MainViewModel : ObservableObject {
         ActiveDocument = document;
     }
 
+    /// <summary>Opens a commit from Git History, or switches to it when it is already open.</summary>
+    public void OpenCommit(CommitDetails commit, string repositoryRoot) {
+        CommitDocumentViewModel? document = Documents.OfType<CommitDocumentViewModel>().FirstOrDefault(d => d.Commit.Hash == commit.Hash);
+        if (document is null) {
+            document = new CommitDocumentViewModel(this, commit, repositoryRoot);
+            Documents.Add(document);
+        }
+        ActiveDocument = document;
+    }
+
     public void CloseDocument(DocumentViewModel? document) {
         if (document is null) {
             return;

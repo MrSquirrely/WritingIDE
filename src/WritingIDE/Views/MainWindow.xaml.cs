@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 
 using WritingIDE.Core.Model;
+using WritingIDE.Services;
 using WritingIDE.ViewModels;
 
 namespace WritingIDE.Views;
@@ -378,6 +379,19 @@ public partial class MainWindow : HandyControl.Controls.Window {
     private void OnGitChangeDoubleClick(object sender, MouseButtonEventArgs e) {
         if (((ListBox)sender).SelectedItem is GitChangeItem item) {
             _viewModel.Git.OpenDiffCommand.Execute(item);
+        }
+    }
+
+    private void OnGitCommitDoubleClick(object sender, MouseButtonEventArgs e) {
+        if (((ListBox)sender).SelectedItem is GitCommitInfo commit) {
+            _viewModel.Git.OpenCommitCommand.Execute(commit);
+        }
+    }
+
+    private void OnGitCommitKeyDown(object sender, KeyEventArgs e) {
+        if ((e.Key == Key.Enter) && (((ListBox)sender).SelectedItem is GitCommitInfo commit)) {
+            _viewModel.Git.OpenCommitCommand.Execute(commit);
+            e.Handled = true;
         }
     }
 

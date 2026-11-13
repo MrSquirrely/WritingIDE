@@ -702,12 +702,43 @@
 
               <DockPanel Grid.Column="4">
                 <TextBlock DockPanel.Dock="Top" Text="History" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" Margin="0,4,0,4" />
-                <ListBox ItemsSource="{Binding History}" BorderThickness="0" HorizontalContentAlignment="Stretch">
+                <ListBox ItemsSource="{Binding History}" BorderThickness="0" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Commit history"
+                         MouseDoubleClick="OnGitCommitDoubleClick" KeyDown="OnGitCommitKeyDown" ToolTip="Double-click a commit to see what it changed">
+                  <ListBox.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="View Changes" Command="{Binding OpenCommitCommand}"
+                                CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                      <MenuItem Header="Copy Commit ID" Command="{Binding CopyCommitIdCommand}"
+                                CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                    </ContextMenu>
+                  </ListBox.ContextMenu>
                   <ListBox.ItemTemplate>
                     <DataTemplate>
                       <DockPanel>
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Foreground="{DynamicResource SubtleTextBrush}" Margin="8,0,0,0" />
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding Hash}" FontFamily="Consolas" Foreground="{DynamicResource MessageBrush}" Margin="0,0,8,0" />
+                        <DockPanel.Resources>
+                          <!-- The dim colours are unreadable on the selection highlight; use the selected text colour there. -->
+                          <Style x:Key="HistoryDetail" TargetType="TextBlock">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </DockPanel.Resources>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding When}" Margin="8,0,0,0">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource HistoryDetail}">
+                              <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding Hash}" FontFamily="Consolas" Margin="0,0,8,0">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource HistoryDetail}">
+                              <Setter Property="Foreground" Value="{DynamicResource MessageBrush}" />
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
                         <TextBlock Text="{Binding Subject}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Author}" />
                       </DockPanel>
                     </DataTemplate>

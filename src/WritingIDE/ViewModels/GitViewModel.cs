@@ -75,6 +75,16 @@ public sealed class GitViewModel : ObservableObject {
                 _ = OpenDiffAsync(item);
             }
         });
+        OpenCommitCommand = new RelayCommand(parameter => {
+            if (parameter is GitCommitInfo commit) {
+                _ = OpenCommitAsync(commit);
+            }
+        });
+        CopyCommitIdCommand = new RelayCommand(parameter => {
+            if (parameter is GitCommitInfo commit) {
+                Clipboard.SetText(commit.Hash);
+            }
+        });
     }
 
     public bool IsGitInstalled { get; private set => SetProperty(ref field, value); } = true;
@@ -141,6 +151,11 @@ public sealed class GitViewModel : ObservableObject {
     public ICommand AddRemoteCommand { get; }
 
     public ICommand OpenDiffCommand { get; }
+
+    /// <summary>Opens a commit from History with the word changes it made to each file.</summary>
+    public ICommand OpenCommitCommand { get; }
+
+    public ICommand CopyCommitIdCommand { get; }
 
     /// <summary>Asks for a refresh soon (debounced): after saves, project changes and window activation.</summary>
     public void RequestRefresh() {
@@ -315,5 +330,18 @@ public sealed class GitViewModel : ObservableObject {
             diff = await _git.GetWordDiffAsync(item.Path);
         }
         _shell.OpenDiff(item.DisplayName, item.StatusDescription, diff);
+    }
+
+    private async Task OpenCommitAsync(GitCommitInfo commit) {
+        if ((_git is null) || (_root is null)) {
+            return;
+        }
+        try {
+            _shell.OpenCommit(await _git.GetCommitAsync(commit.Hash), _root);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or FormatException or System.ComponentModel.Win32Exception or IOException) {
+            Message = $"Could not read commit {commit.Hash}: {exception.Message}";
+            _shell.Log($"Git: {Message}");
+        }
     }
 }

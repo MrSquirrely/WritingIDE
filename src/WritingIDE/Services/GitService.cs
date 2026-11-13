@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using WritingIDE.Core.Persistence;
+
 namespace WritingIDE.Services;
 
 public sealed record GitResult(int ExitCode, string Output, string Error) {
@@ -127,6 +129,15 @@ public sealed partial class GitService(string workingDirectory) {
             .Where(static parts => parts.Length == 4)
             .Select(static parts => new GitCommitInfo(parts[0], parts[1], parts[2], parts[3]))
             .ToList();
+    }
+
+    /// <summary>A commit's message and the word-level changes it made to each file.</summary>
+    public async Task<CommitDetails> GetCommitAsync(string revision) {
+        GitResult result = await RunAsync(DefaultTimeout, GitCommitDiff.Arguments(revision));
+        if (!result.Success) {
+            throw new InvalidOperationException(result.Message);
+        }
+        return GitCommitDiff.Parse(result.Output);
     }
 
     /// <summary>
