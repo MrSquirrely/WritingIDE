@@ -74,14 +74,20 @@ public static class WordDiff {
         List<string> a = Tokenize(oldText);
         List<string> b = Tokenize(newText);
         List<DiffPiece> pieces = [];
+        // Runs are built in one buffer: adding token by token to a string copied the whole run each time, which made
+        // a long unchanged chapter quadratic.
+        StringBuilder run = new();
+        DiffKind? runKind = null;
         foreach ((DiffKind kind, int oldIndex, int newIndex) in DiffIndexes(a, b)) {
-            string token = kind == DiffKind.Added ? b[newIndex] : a[oldIndex];
-            if ((pieces.Count > 0) && (pieces[^1].Kind == kind)) {
-                pieces[^1] = pieces[^1] with { Text = pieces[^1].Text + token };
+            if ((runKind is not null) && (runKind != kind)) {
+                pieces.Add(new DiffPiece(runKind.Value, run.ToString()));
+                run.Clear();
             }
-            else {
-                pieces.Add(new DiffPiece(kind, token));
-            }
+            runKind = kind;
+            run.Append(kind == DiffKind.Added ? b[newIndex] : a[oldIndex]);
+        }
+        if (runKind is not null) {
+            pieces.Add(new DiffPiece(runKind.Value, run.ToString()));
         }
         return Tidy(pieces);
     }

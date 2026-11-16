@@ -20,6 +20,14 @@ public sealed class AppSettings {
     /// <summary>View > Comments: the margin with comment cards and the comment highlighting.</summary>
     public bool ShowCommentMargin { get; set; } = true;
 
+    /// <summary>The manuscript editor font: an installed font or one added in Tools > Fonts.</summary>
+    public string EditorFontFamily { get; set; } = "Cambria";
+
+    public double EditorFontSize { get; set; } = 16;
+
+    /// <summary>Added font files that could not be deleted while in use; deleted at the next start.</summary>
+    public List<string> PendingFontDeletes { get; set; } = [];
+
     public AiSettings Ai { get; set; } = new();
 
     public ApiSettings Api { get; set; } = new();

@@ -11,6 +11,11 @@ namespace WritingIDE.Core.Export;
 /// </summary>
 public static class EpubExporter {
     public static void Write(string path, ManuscriptDocument document, ExportOptions options) {
+        Write(path, document, options, []);
+    }
+
+    /// <param name="warnings">Receives a note when the chosen font is named in the stylesheet but cannot be embedded.</param>
+    public static void Write(string path, ManuscriptDocument document, ExportOptions options, List<string> warnings) {
         if (File.Exists(path)) {
             File.Delete(path);
         }
@@ -26,8 +31,10 @@ public static class EpubExporter {
               <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
             </container>
             """);
-        Add(zip, "OEBPS/style.css", """
-            body { font-family: Georgia, serif; line-height: 1.5; margin: 0 5%; }
+        string family = options.EffectiveFontFamily;
+        List<(string File, string MediaType)> fonts = EmbedFonts(zip, family, warnings, out string fontFaces);
+        Add(zip, "OEBPS/style.css", fontFaces + $$"""
+            body { font-family: "{{family.Replace("\"", "")}}", Georgia, serif; line-height: 1.5; margin: 0 5%; }
             h1 { text-align: center; font-weight: normal; margin: 3em 0 1.5em; page-break-before: always; }
             h2.book { text-align: center; font-size: 1.6em; margin-top: 30%; page-break-before: always; }
             p { margin: 0; text-indent: 1.5em; text-align: justify; }
@@ -64,7 +71,7 @@ public static class EpubExporter {
                     body.Append(first ? "<p class=\"first\">" : "<p>");
                     foreach (InlineRun run in paragraph.Runs) {
                         string text = Escape(run.Text);
-                        body.Append(run.Bold ? $"<strong>{text}</strong>" : run.Italic ? $"<em>{text}</em>" : text);
+                        body.Append(run.Bold && run.Italic ? $"<strong><em>{text}</em></strong>" : run.Bold ? $"<strong>{text}</strong>" : run.Italic ? $"<em>{text}</em>" : text);
                     }
                     body.Append("</p>\n");
                     first = false;
@@ -105,7 +112,8 @@ public static class EpubExporter {
             </ncx>
             """);
 
-        string manifest = string.Concat(spine.Select((entry, index) => $"    <item id=\"s{index}\" href=\"{entry.File}\" media-type=\"application/xhtml+xml\"/>\n"));
+        string manifest = string.Concat(spine.Select((entry, index) => $"    <item id=\"s{index}\" href=\"{entry.File}\" media-type=\"application/xhtml+xml\"/>\n"))
+            + string.Concat(fonts.Select((font, index) => $"    <item id=\"f{index}\" href=\"{font.File}\" media-type=\"{font.MediaType}\"/>\n"));
         string itemrefs = string.Concat(spine.Select((_, index) => $"    <itemref idref=\"s{index}\"/>\n"));
         string modified = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
         Add(zip, "OEBPS/content.opf", $"""
@@ -127,6 +135,50 @@ public static class EpubExporter {
             {itemrefs}  </spine>
             </package>
             """);
+    }
+
+    /// <summary>
+    /// Puts the font's files into the book with @font-face rules, so readers show it even when it is not installed.
+    /// Georgia and other fonts whose licence restricts embedding are only named in the stylesheet.
+    /// </summary>
+    private static List<(string File, string MediaType)> EmbedFonts(ZipArchive zip, string family, List<string> warnings, out string css) {
+        css = "";
+        List<(string File, string MediaType)> files = [];
+        FontFamilyFaces? faces = FontCatalog.Installed.Find(family);
+        if (faces is null) {
+            warnings.Add($"The font '{family}' was not found on this PC, so the e-book only names it; readers without it use their own font.");
+            return files;
+        }
+        if (faces.All.Any(static face => face.IsEmbeddingRestricted)) {
+            warnings.Add($"The licence of '{family}' does not allow embedding it, so the e-book only names it; readers without it use their own font.");
+            return files;
+        }
+        // Read every face first, so a damaged file leaves no half-embedded font behind.
+        List<(bool Bold, bool Italic, string Style, FontFace Face, byte[] Data)> embedded = [];
+        try {
+            foreach ((bool bold, bool italic, string style) in new[] { (false, false, "regular"), (true, false, "bold"), (false, true, "italic"), (true, true, "bolditalic") }) {
+                FontFace? face = faces.Get(bold, italic);
+                if (face is not null) {
+                    embedded.Add((bold, italic, style, face, FontCatalog.ExtractFace(face)));
+                }
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException) {
+            warnings.Add($"{exception.Message.TrimEnd('.')}, so the e-book only names '{family}'; readers without it use their own font.");
+            return files;
+        }
+        StringBuilder rules = new();
+        foreach ((bool bold, bool italic, string style, FontFace face, byte[] data) in embedded) {
+            string extension = face.HasTrueTypeOutlines ? "ttf" : "otf";
+            string file = $"fonts/{style}.{extension}";
+            using (Stream entry = zip.CreateEntry("OEBPS/" + file, CompressionLevel.Optimal).Open()) {
+                entry.Write(data);
+            }
+            files.Add((file, extension == "ttf" ? "font/ttf" : "font/otf"));
+            rules.Append($$"""@font-face { font-family: "{{family.Replace("\"", "")}}"; font-weight: {{(bold ? "bold" : "normal")}}; font-style: {{(italic ? "italic" : "normal")}}; src: url("{{file}}"); }""").Append('\n');
+        }
+        css = rules.ToString();
+        return files;
     }
 
     private static string Page(string title, string body) {

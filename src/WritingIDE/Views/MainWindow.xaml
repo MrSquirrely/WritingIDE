@@ -17,7 +17,7 @@
     <KeyBinding Key="F6" Command="{Binding AnalyzeAllCommand}" />
     <KeyBinding Key="B" Modifiers="Ctrl+Shift" Command="{Binding AnalyzeAllCommand}" />
     <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding CloseDocumentCommand}" />
-    <KeyBinding Key="I" Modifiers="Ctrl" Command="{Binding ImportCommand}" />
+    <KeyBinding Key="I" Modifiers="Ctrl+Shift" Command="{Binding ImportCommand}" />
     <KeyBinding Key="F" Modifiers="Ctrl+Shift" Command="{Binding FindInFilesCommand}" />
     <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{Binding ReplaceInFilesCommand}" />
     <KeyBinding Key="F11" Command="{Binding ToggleDistractionFreeCommand}" />
@@ -235,7 +235,7 @@
         <Separator />
         <MenuItem Header="_Save All" Command="{Binding SaveAllCommand}" InputGestureText="Ctrl+S" />
         <Separator />
-        <MenuItem Header="_Import..." Command="{Binding ImportCommand}" InputGestureText="Ctrl+I" />
+        <MenuItem Header="_Import..." Command="{Binding ImportCommand}" InputGestureText="Ctrl+Shift+I" />
         <MenuItem Header="_Export..." Command="{Binding ExportCommand}" InputGestureText="Ctrl+Shift+E" />
         <Separator />
         <MenuItem Header="Start _Page" Command="{Binding ShowStartPageCommand}" />
@@ -249,6 +249,14 @@
         <MenuItem Command="ApplicationCommands.Cut" />
         <MenuItem Command="ApplicationCommands.Copy" />
         <MenuItem Command="ApplicationCommands.Paste" />
+        <Separator />
+        <MenuItem Header="F_ormat">
+          <MenuItem Header="_Bold" Command="{Binding BoldCommand}" InputGestureText="Ctrl+B" />
+          <MenuItem Header="_Italic" Command="{Binding ItalicCommand}" InputGestureText="Ctrl+I" />
+          <MenuItem Header="_Clear Formatting" Command="{Binding ClearFormattingCommand}" />
+          <Separator />
+          <MenuItem Header="_Fonts..." Command="{Binding FontsCommand}" />
+        </MenuItem>
         <Separator />
         <MenuItem Command="ApplicationCommands.Find" InputGestureText="Ctrl+F" />
         <MenuItem Header="Find in _Files..." Command="{Binding FindInFilesCommand}" InputGestureText="Ctrl+Shift+F" />
@@ -327,6 +335,7 @@
           <MenuItem Header="Every 5 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="5" />
           <MenuItem Header="Every 10 minutes" Command="{Binding SetAutosaveCommand}" CommandParameter="10" />
         </MenuItem>
+        <MenuItem Header="_Fonts..." Command="{Binding FontsCommand}" />
         <MenuItem Header="_Extensions and API..." Command="{Binding PluginsCommand}" />
         <MenuItem Header="_Options..." Command="{Binding OptionsCommand}" />
       </MenuItem>
@@ -348,6 +357,10 @@
         <MenuItem Header="_Close Second Pane" Command="{Binding CloseSplitPaneCommand}" />
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="Check for _Updates..." Command="{Binding Updates.CheckCommand}" />
+        <MenuItem Header="_Restart to Update" Command="{Binding Updates.RestartToUpdateCommand}"
+                  Visibility="{Binding Updates.IsUpdateReady, Converter={StaticResource BoolToVisibility}}" />
+        <Separator />
         <MenuItem Header="_About WritingIDE" Command="{Binding AboutCommand}" />
       </MenuItem>
     </Menu>
@@ -377,6 +390,28 @@
           <TextBlock Style="{StaticResource Glyph}" Text="&#xE7A6;" />
         </Button>
         <Border Width="1" Margin="4,3" Background="{DynamicResource BorderBrush}" />
+        <Button Style="{StaticResource ToolButton}" Command="{Binding BoldCommand}" ToolTip="Bold (Ctrl+B): wraps the selection or word in **" AutomationProperties.Name="Bold" Focusable="False">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE8DD;" />
+        </Button>
+        <Button Style="{StaticResource ToolButton}" Command="{Binding ItalicCommand}" ToolTip="Italic (Ctrl+I): wraps the selection or word in *" AutomationProperties.Name="Italic" Focusable="False">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE8DB;" />
+        </Button>
+        <ComboBox Width="170" Margin="4,1,2,1" ItemsSource="{Binding FontChoices}" SelectedItem="{Binding EditorFont}" AutomationProperties.Name="Editor font"
+                  ToolTip="Editor font (Tools > Fonts to add your own)" Focusable="False" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+          <ComboBox.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ComboBox.ItemsPanel>
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Name}" FontFamily="{Binding Family}" FontSize="13" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <ComboBox Width="62" Margin="2,1,2,1" IsEditable="True" ItemsSource="{Binding FontSizes}" AutomationProperties.Name="Editor font size" ToolTip="Editor font size"
+                  Text="{Binding EditorFontSize, UpdateSourceTrigger=LostFocus}" />
+        <Border Width="1" Margin="4,3" Background="{DynamicResource BorderBrush}" />
         <Button Style="{StaticResource ToolButton}" Command="{Binding AddChapterCommand}" ToolTip="Add Chapter">
           <StackPanel Orientation="Horizontal">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE8A5;" Foreground="{DynamicResource IconGreyBrush}" />
@@ -398,7 +433,7 @@
         <Button Style="{StaticResource ToolButton}" Command="{Binding AddNewItemCommand}" ToolTip="Add New Item (Ctrl+Shift+A)">
           <TextBlock Style="{StaticResource Glyph}" Text="&#xE710;" Foreground="{DynamicResource SuccessBrush}" />
         </Button>
-        <Button Style="{StaticResource ToolButton}" Command="{Binding ImportCommand}" ToolTip="Import chapters and story elements, e.g. from an AI (Ctrl+I)">
+        <Button Style="{StaticResource ToolButton}" Command="{Binding ImportCommand}" ToolTip="Import chapters and story elements, e.g. from an AI (Ctrl+Shift+I)">
           <StackPanel Orientation="Horizontal">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B5;" Foreground="{DynamicResource MessageBrush}" />
             <TextBlock Text="Import" Margin="4,0,0,0" />

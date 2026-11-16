@@ -4,6 +4,9 @@
 [Ll]og/
 *.binlog
 
+# Installers and update packages from build/release.ps1
+artifacts/
+
 # Visual Studio / Rider / VS Code
 .vs/
 .idea/

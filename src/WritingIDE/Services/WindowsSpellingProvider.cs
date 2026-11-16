@@ -25,21 +25,30 @@ public sealed class WindowsSpellingProvider(string languageTag = "en-US") : ISpe
                 return [];
             }
             List<SpellingIssue> issues = [];
+            IEnumSpellingError? errors = null;
             try {
-                IEnumSpellingError errors = checker.Check(text);
+                errors = checker.Check(text);
                 while (errors.Next(out ISpellingError? error) == 0 && error is not null) {
-                    CorrectiveAction action = error.GetCorrectiveAction();
-                    // Repeated words are reported by the grammar engine's own rule.
-                    if (action != CorrectiveAction.Delete) {
-                        string? replacement = action == CorrectiveAction.Replace ? error.GetReplacement() : null;
-                        issues.Add(new SpellingIssue((int)error.GetStartIndex(), (int)error.GetLength(), replacement));
+                    try {
+                        CorrectiveAction action = error.GetCorrectiveAction();
+                        // Repeated words are reported by the grammar engine's own rule.
+                        if (action != CorrectiveAction.Delete) {
+                            string? replacement = action == CorrectiveAction.Replace ? error.GetReplacement() : null;
+                            issues.Add(new SpellingIssue((int)error.GetStartIndex(), (int)error.GetLength(), replacement));
+                        }
                     }
-                    Marshal.ReleaseComObject(error);
+                    finally {
+                        Marshal.ReleaseComObject(error);
+                    }
                 }
-                Marshal.ReleaseComObject(errors);
             }
             catch (COMException) {
                 // A failing check should never break analysis; report nothing for this run.
+            }
+            finally {
+                if (errors is not null) {
+                    Marshal.ReleaseComObject(errors);
+                }
             }
             return issues;
         }
@@ -51,11 +60,19 @@ public sealed class WindowsSpellingProvider(string languageTag = "en-US") : ISpe
             if (checker is null) {
                 return [];
             }
+            IEnumString? suggestions = null;
             try {
-                return Enumerate(checker.Suggest(word)).Take(8).ToList();
+                suggestions = checker.Suggest(word);
+                return Enumerate(suggestions).Take(8).ToList();
             }
             catch (COMException) {
                 return [];
+            }
+            finally {
+                // Each call returns a new COM enumerator; release it rather than waiting for the finalizer.
+                if (suggestions is not null) {
+                    Marshal.ReleaseComObject(suggestions);
+                }
             }
         }
     }

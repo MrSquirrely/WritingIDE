@@ -45,8 +45,8 @@
           <TextBlock Grid.Row="3" Grid.Column="1" Text="Go To Definition / Find All References" />
           <TextBlock Grid.Row="4" FontFamily="Consolas" Text="F2  ·  F6" />
           <TextBlock Grid.Row="4" Grid.Column="1" Text="Rename everywhere  ·  Analyze manuscript" />
-          <TextBlock Grid.Row="5" FontFamily="Consolas" Text="Ctrl+I" />
-          <TextBlock Grid.Row="5" Grid.Column="1" Text="Import (with an AI prompt)" />
+          <TextBlock Grid.Row="5" FontFamily="Consolas" Text="Ctrl+B / Ctrl+I" />
+          <TextBlock Grid.Row="5" Grid.Column="1" Text="Bold / Italic  (Import is Ctrl+Shift+I)" />
         </Grid>
       </Border>
 

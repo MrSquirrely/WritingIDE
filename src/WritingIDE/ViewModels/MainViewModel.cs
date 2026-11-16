@@ -115,8 +115,10 @@ public sealed partial class MainViewModel : ObservableObject {
         Harper.Log += line => Application.Current?.Dispatcher.BeginInvoke(() => Log(line));
         Harper.StateChanged += () => Application.Current?.Dispatcher.BeginInvoke(OnPluginStateChanged);
 
+        _projectRefreshTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(150) };
+        _projectRefreshTimer.Tick += (_, _) => RefreshAfterReports();
         _recoveryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(RecoveryIntervalSeconds) };
-        _recoveryTimer.Tick += (_, _) => WriteRecoverySnapshot();
+        _recoveryTimer.Tick += (_, _) => WriteRecoverySnapshotInBackground();
         _recoveryTimer.Start();
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += (_, _) => {
@@ -129,6 +131,7 @@ public sealed partial class MainViewModel : ObservableObject {
         Git = new GitViewModel(this);
         Ai = new AiService(this);
         InitializeWritingTools();
+        InitializeFormatting();
 
         Log("WritingIDE ready.");
         if (Settings.Harper.Enabled) {
@@ -281,6 +284,9 @@ public sealed partial class MainViewModel : ObservableObject {
     // =====================================================================
 
     private const int RecoveryIntervalSeconds = 30;
+    private Task _recoveryWrite = Task.CompletedTask;
+    private readonly DispatcherTimer _projectRefreshTimer;
+    private readonly HashSet<Guid> _reportedChapters = [];
 
     private readonly DispatcherTimer _recoveryTimer;
     private readonly DispatcherTimer _autosaveTimer;
@@ -314,8 +320,37 @@ public sealed partial class MainViewModel : ObservableObject {
     }
 
     /// <summary>
-    /// Writes a crash-recovery snapshot of unsaved work (project plus every chapter's current text). Called every
-    /// 30 seconds, on unhandled exceptions and when Windows shuts down. Never throws.
+    /// The 30-second recovery snapshot: taken on the UI thread (quick), serialized and written in the background so a
+    /// long book never stalls typing. Skipped while the previous one is still being written.
+    /// </summary>
+    private void WriteRecoverySnapshotInBackground() {
+        if ((Project is null) || !IsProjectDirty || !_recoveryWrite.IsCompleted) {
+            return;
+        }
+        Action write;
+        try {
+            foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
+                document.SyncComments();
+            }
+            write = RecoveryStore.Capture(Project, GetChapterText);
+        }
+        catch (InvalidOperationException exception) {
+            Log($"warning: could not take the recovery snapshot: {exception.Message}");
+            return;
+        }
+        _recoveryWrite = Task.Run(() => {
+            try {
+                write();
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException) {
+                Application.Current?.Dispatcher.BeginInvoke(() => Log($"warning: could not write the recovery snapshot: {exception.Message}"));
+            }
+        });
+    }
+
+    /// <summary>
+    /// Writes a crash-recovery snapshot of unsaved work (project plus every chapter's current text) right away. Used
+    /// on unhandled exceptions and when Windows shuts down. Never throws.
     /// </summary>
     public void WriteRecoverySnapshot() {
         if ((Project is null) || !IsProjectDirty) {
@@ -847,6 +882,10 @@ public sealed partial class MainViewModel : ObservableObject {
         References.Clear();
         _grammarOptions = null;
         Project = project;
+        foreach (string warning in project.LoadWarnings) {
+            Log($"warning: {warning}");
+            Notify(warning, NotificationKind.Warning);
+        }
 
         SolutionItems.Clear();
         SolutionItems.Add(new ProjectNode(project));
@@ -1261,16 +1300,32 @@ public sealed partial class MainViewModel : ObservableObject {
         _wordCounts[chapter.Id] = result.Statistics.Words;
         _mentionCounts[chapter.Id] = result.Mentions.GroupBy(static mention => mention.Entity.Id).ToDictionary(static group => group.Key, static group => group.Count());
         _tasks[chapter.Id] = TaskScanner.Scan(chapter, text);
+        UpdateProjectStatistics();
+        // The Error List, Task List and other editors' name lenses cover the whole project: refresh them once for a
+        // burst of reports (a whole-manuscript analysis reports every chapter) rather than once per chapter.
+        _reportedChapters.Add(chapter.Id);
+        _projectRefreshTimer.Stop();
+        _projectRefreshTimer.Start();
+    }
+
+    private void RefreshAfterReports() {
+        _projectRefreshTimer.Stop();
         RefreshTaskList();
         RefreshErrorList();
-        UpdateProjectStatistics();
         foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
-            if (document.Chapter != chapter) {
+            // A chapter's own editor already has fresh lenses from its analysis.
+            if (!_reportedChapters.Contains(document.Chapter.Id) || (_reportedChapters.Count > 1)) {
                 foreach (Editor.ManuscriptEditor editor in document.AllEditors) {
                     editor.RefreshLenses();
                 }
             }
         }
+        _reportedChapters.Clear();
+    }
+
+    /// <summary>A chapter's word count from its last analysis (counted now if it has not been analyzed).</summary>
+    public int GetWordCount(Chapter chapter) {
+        return _wordCounts.TryGetValue(chapter.Id, out int words) ? words : TextStatistics.CountWords(GetChapterText(chapter));
     }
 
     /// <summary>The name lens for a story element seen from <paramref name="chapter"/>: totals, and the last chapter before it that mentions it.</summary>

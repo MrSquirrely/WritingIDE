@@ -90,8 +90,18 @@ public sealed partial class ChapterDocumentViewModel {
     }
 
     /// <summary>Called after each analysis: refreshes revision marks, the outline and the task list.</summary>
-    private void UpdateAfterAnalysis(string text) {
-        UpdateRevisions();
+    /// <summary>The baseline revision mode compares against, or null when it is off; read on the UI thread before analysis.</summary>
+    private string? RevisionBaselineForAnalysis => IsTrackingRevisions ? _revisionBaseline : null;
+
+    /// <param name="baseline">The baseline the background analysis compared against.</param>
+    /// <param name="changes">Its result; used when the baseline has not changed since (otherwise compared again).</param>
+    private void UpdateAfterAnalysis(string? baseline, IReadOnlyList<RevisionChange>? changes) {
+        if ((changes is not null) && IsTrackingRevisions && ReferenceEquals(baseline, _revisionBaseline)) {
+            ApplyRevisionChanges(changes);
+        }
+        else {
+            UpdateRevisions();
+        }
         RefreshOutline();
     }
 
@@ -133,7 +143,11 @@ public sealed partial class ChapterDocumentViewModel {
     }
 
     private void UpdateRevisions() {
-        RevisionChanges = IsTrackingRevisions ? RevisionTracker.Compare(_revisionBaseline!, Document.Text) : [];
+        ApplyRevisionChanges(IsTrackingRevisions ? RevisionTracker.Compare(_revisionBaseline!, Document.Text) : []);
+    }
+
+    private void ApplyRevisionChanges(IReadOnlyList<RevisionChange> changes) {
+        RevisionChanges = changes;
         RevisionSummary = !IsTrackingRevisions ? "" : RevisionChanges.Count switch {
             0 => "Tracking changes: none yet.",
             1 => "Tracking changes: 1 change.",

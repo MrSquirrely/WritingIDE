@@ -27,7 +27,7 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
                 return (IReadOnlyList<ChapterInfo>)[];
             }
             return shell.OrderedChapters.Select(chapter => new ChapterInfo(chapter.Id, chapter.Title, chapter.BookId, project.FindBook(chapter.BookId)?.Title,
-                chapter.Status.ToString(), chapter.Synopsis, chapter.PointOfView, chapter.StoryDate, TextStatistics.CountWords(shell.GetChapterText(chapter)))).ToList();
+                chapter.Status.ToString(), chapter.Synopsis, chapter.PointOfView, chapter.StoryDate, shell.GetWordCount(chapter))).ToList();
         });
     }
 
@@ -53,6 +53,9 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
     public Guid AddChapter(string title, string text, Guid? bookId = null) {
         return OnUi(() => {
             NovelProject project = RequireProject();
+            if ((bookId is Guid requested) && (project.FindBook(requested) is null)) {
+                throw new ArgumentException($"No book with id {requested}.");
+            }
             Chapter chapter = new(title) { BookId = bookId ?? (project.IsSeries ? project.Books.LastOrDefault()?.Id : null), Text = text };
             Chapter? last = project.GetChapters(project.FindBook(chapter.BookId)).LastOrDefault();
             project.Chapters.Insert(last is null ? project.Chapters.Count : project.Chapters.IndexOf(last) + 1, chapter);

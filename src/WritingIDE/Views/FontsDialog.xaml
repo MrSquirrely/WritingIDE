@@ -1,0 +1,87 @@
+<hc:Window x:Class="WritingIDE.Views.FontsDialog" Icon="/Assets/WritingIDE.ico"
+           xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:hc="https://handyorg.github.io/handycontrol"
+           Title="Fonts" Width="860" Height="580" MinWidth="680" MinHeight="440" WindowStartupLocation="CenterOwner"
+           ShowInTaskbar="False" Background="{DynamicResource SurfaceBrush}" FontFamily="Segoe UI" FontSize="12"
+           NonClientAreaBackground="{DynamicResource ChromeBrush}">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource ChromeBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button x:Name="UseButton" Style="{StaticResource PrimaryDialogButton}" Content="Use in the Editor" IsDefault="True" Click="OnUse" AutomationProperties.Name="Use in the Editor" />
+          <Button Style="{StaticResource DialogButton}" Content="Cancel" IsCancel="True" />
+        </StackPanel>
+        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,0,16,0"
+                   Text="The editor font only changes how the manuscript looks here. Choose a font for a Word, PDF or e-book file in File > Export." />
+      </DockPanel>
+    </Border>
+
+    <Grid Margin="16,14,16,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="18" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <DockPanel>
+        <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Style="{StaticResource FormTextBox}" hc:InfoElement.Placeholder="Search fonts" Margin="0,0,0,6"
+                 TextChanged="OnSearchChanged" AutomationProperties.Name="Search fonts" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+          <Button Style="{StaticResource DialogButton}" Margin="0,0,8,0" Content="Add font files..." Click="OnAddFonts" AutomationProperties.Name="Add font files" />
+          <Button x:Name="RemoveButton" Style="{StaticResource DialogButton}" Margin="0,0,8,0" Content="Remove" Click="OnRemoveFont" IsEnabled="False" AutomationProperties.Name="Remove added font"
+                  ToolTip="Removes a font you added to WritingIDE (installed fonts are managed in Windows Settings)" />
+          <Button Style="{StaticResource DialogButton}" Margin="0" Content="Open folder" Click="OnOpenFolder" ToolTip="The folder that holds the fonts added to WritingIDE" />
+        </StackPanel>
+        <ListBox x:Name="FontList" BorderBrush="{DynamicResource BorderBrush}" HorizontalContentAlignment="Stretch" SelectionChanged="OnFontSelected"
+                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 AutomationProperties.Name="Fonts">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <DockPanel>
+                <Border DockPanel.Dock="Right" CornerRadius="3" Padding="5,0" Margin="6,0,0,0" VerticalAlignment="Center" Background="{DynamicResource MessageBrush}">
+                  <Border.Style>
+                    <Style TargetType="Border">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAdded}" Value="True">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Border.Style>
+                  <TextBlock Text="Added" Foreground="White" FontSize="10" />
+                </Border>
+                <TextBlock Text="{Binding Name}" FontFamily="{Binding Family}" FontSize="14" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+              </DockPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <DockPanel Grid.Column="2">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <TextBlock Text="Size" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <hc:NumericUpDown x:Name="SizeBox" Minimum="6" Maximum="96" Increment="1" Width="90" ValueChanged="OnSizeChanged" AutomationProperties.Name="Font size" />
+          </StackPanel>
+          <TextBlock x:Name="FontName" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        </DockPanel>
+        <TextBlock DockPanel.Dock="Top" x:Name="FontDetail" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,0,0,8" />
+        <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="{DynamicResource LabelBrush}" Margin="0,10,0,0"
+                   Text="Fonts you add (.ttf, .otf or .ttc) are copied into WritingIDE and work only here, without installing them in Windows: in the editor, and in PDF and e-book exports, which embed them when the font's licence allows." />
+        <Border Background="{DynamicResource EditorBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="18,14">
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TextBlock x:Name="Preview" TextWrapping="Wrap" Foreground="{DynamicResource EditorForegroundBrush}" LineHeight="NaN">
+              <Run Text="The wind had been rising since noon, and by dusk Elena could hear it singing in the iron railings of Greyhaven Lighthouse." />
+              <LineBreak /><LineBreak />
+              <Run Text="&quot;Who's there?&quot; she whispered. " /><Run Text="Nobody answers at this hour," FontStyle="Italic" /><Run Text=" she told herself, and climbed on. " /><Run Text="The light was out." FontWeight="Bold" />
+              <LineBreak /><LineBreak />
+              <Run Text="ABCDEFGHIJKLM nopqrstuvwxyz 0123456789 &#x2014; &#x201C;curly quotes&#x201D; &#x2026;" />
+            </TextBlock>
+          </ScrollViewer>
+        </Border>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</hc:Window>

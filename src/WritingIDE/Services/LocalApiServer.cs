@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Windows;
 
 using WritingIDE.Core.Model;
 using WritingIDE.Sdk;
@@ -20,6 +21,9 @@ public sealed class LocalApiServer(MainViewModel shell) {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() }
     };
+
+    /// <summary>The largest request body accepted (a whole chapter is far smaller).</summary>
+    private const int MaxBodyBytes = 16 * 1024 * 1024;
 
     private HttpListener? _listener;
     private CancellationTokenSource? _stop;
@@ -110,8 +114,13 @@ public sealed class LocalApiServer(MainViewModel shell) {
         catch (Exception exception) when (exception is InvalidOperationException or JsonException or FormatException or ArgumentException) {
             await WriteAsync(response, 400, new { error = exception.Message });
         }
+        catch (RequestTooLargeException) {
+            await WriteAsync(response, 413, new { error = $"The request body is larger than {MaxBodyBytes / (1024 * 1024)} MB." });
+        }
         catch (Exception exception) {
-            await WriteAsync(response, 500, new { error = exception.Message });
+            // Details stay in the Output window; the caller only learns that something went wrong.
+            Application.Current?.Dispatcher.BeginInvoke(() => shell.Log($"warning: local API request {request.HttpMethod} {request.Url?.AbsolutePath} failed: {exception}"));
+            await WriteAsync(response, 500, new { error = "WritingIDE could not complete the request; see its Output window." });
         }
     }
 
@@ -145,8 +154,10 @@ public sealed class LocalApiServer(MainViewModel shell) {
         Guid? id = segments.Length > 2 ? Guid.Parse(segments[2]) : null;
         string sub = segments.Length > 3 ? segments[3].ToLowerInvariant() : "";
         switch (resource, method, id.HasValue, sub) {
-            case ("project", "GET", false, ""):
-                return (200, new { name = api.Name, author = api.Author, directory = api.DirectoryPath, chapters = api.GetChapters().Count, words = api.GetChapters().Sum(static chapter => chapter.Words) });
+            case ("project", "GET", false, ""): {
+                IReadOnlyList<ChapterInfo> chapters = api.GetChapters();
+                return (200, new { name = api.Name, author = api.Author, directory = api.DirectoryPath, chapters = chapters.Count, words = chapters.Sum(static chapter => chapter.Words) });
+            }
             case ("chapters", "GET", false, ""):
                 return (200, api.GetChapters());
             case ("chapters", "POST", false, ""): {
@@ -196,9 +207,23 @@ public sealed class LocalApiServer(MainViewModel shell) {
         if (!request.HasEntityBody) {
             return "";
         }
-        using StreamReader reader = new(request.InputStream, request.ContentEncoding);
-        return await reader.ReadToEndAsync();
+        if (request.ContentLength64 > MaxBodyBytes) {
+            throw new RequestTooLargeException();
+        }
+        // Chunked bodies have no length up front: read at most the limit.
+        using MemoryStream buffer = new();
+        byte[] chunk = new byte[81920];
+        int read;
+        while ((read = await request.InputStream.ReadAsync(chunk)) > 0) {
+            if (buffer.Length + read > MaxBodyBytes) {
+                throw new RequestTooLargeException();
+            }
+            buffer.Write(chunk, 0, read);
+        }
+        return request.ContentEncoding.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
+
+    private sealed class RequestTooLargeException : Exception;
 
     private static Task WriteAsync(HttpListenerResponse response, int status, object body) {
         return WriteRawAsync(response, status, JsonSerializer.Serialize(body, Json), "application/json");

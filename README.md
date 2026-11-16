@@ -2,6 +2,8 @@
 
 An IDE for novelists, modelled on Visual Studio. C# / WPF on .NET 10, styled with [HandyControls](https://www.nuget.org/packages/HandyControls).
 
+Runs on Windows 10 and 11 (.NET 10 does not support older versions). The app is per-monitor DPI aware, so text stays sharp on monitors with different scaling.
+
 You create a **project** (`.novproj`), then add **chapters** (like source files) and **story elements** (like classes): characters, places, items, factions, events and lore. While you write, the editor gives you IntelliSense for your story elements and a grammar engine that reports problems the way a compiler does.
 
 A project is either a **novel** or a **series**. A series is like a solution with several projects: it holds several **books**, each with its own chapters, and every book shares the same characters, places, lore and **Series Bible** (premise, tone, themes, world rules and plot plan). Create one with **File > New Project > Book Series**, or turn a novel into a series with **Project > Convert to Series**. Add books from the Project menu, the Add New Item dialog or by right-clicking the series; move chapters between books from their right-click menu or the Book box in Properties.
@@ -28,9 +30,30 @@ The story elements have attributes and relationships, so the Relationship Map an
 dotnet test
 ```
 
+## Installers and updates
+
+WritingIDE ships with [Velopack](https://velopack.io): a per-user installer (no administrator rights) with automatic updates.
+
+```powershell
+.\build\release.ps1 -Version 1.0.0 -UpdateUrl https://github.com/<owner>/<releases-repo>
+```
+
+The script publishes a self-contained, ReadyToRun build for x64 and ARM64 (the publish profiles `FolderProfile` and `FolderProfileArm64`), then runs Velopack's `vpk` tool, pinned in `dotnet-tools.json`. It writes these files to `artifacts\releases`:
+
+- `WritingIDE.App-win-x64-Setup.exe` and `WritingIDE.App-win-arm64-Setup.exe`: the installers.
+- `...-Portable.zip`: runs without installing.
+- `...-full.nupkg` plus `releases.*.json`, `assets.*.json` and `RELEASES-*`: the update packages and feeds.
+
+Upload all of them to the place `-UpdateUrl` names: the releases of a public GitHub repository (`dotnet vpk upload github ...`), or any HTTPS folder. The source repository can stay private.
+
+- **The installer** puts WritingIDE in `%LocalAppData%\WritingIDE.App`, adds Start menu and desktop shortcuts, and registers `.novproj` files to open in WritingIDE. It needs no .NET install. The writer's own data stays in `%LocalAppData%\WritingIDE` and `%AppData%\WritingIDE` and survives uninstalling.
+- **Updates**: the installed app checks quietly at startup and downloads a new version in the background. It installs when WritingIDE closes; **Help > Restart to Update** installs it straight away, after the usual offer to save. **Help > Check for Updates** checks on demand. Builds without `-UpdateUrl`, and builds run from Visual Studio, never check.
+- **Smaller updates**: put the previous release in `artifacts\releases` before packing (`dotnet vpk download github ...`), and Velopack also creates delta packages.
+- **Signing**: unsigned installers make Windows SmartScreen warn on first run. Pass `-AzureTrustedSignFile` (Azure Trusted Signing) to sign `WritingIDE.exe` and `Setup.exe`.
+
 ## Importing (with an AI's help)
 
-**File > Import** (Ctrl+I, or the Import button on the toolbar and Start Page) opens a two-step dialog:
+**File > Import** (Ctrl+Shift+I, or the Import button on the toolbar and Start Page) opens a two-step dialog:
 
 1. **Ask an AI.** Pick what the AI should do:
    - **Convert a story bible we made in the chat.** For a world bible written earlier in an AI conversation. Characters, places, factions, events and **lore** (magic systems, ranks, glossary terms) become story elements; premise, tone, themes and the plot plan go into the Story/Series Bible; planned chapters become **Outline** chapters, with any drafted key scenes copied into them.
@@ -73,6 +96,12 @@ Block types are `NOVEL` or `SERIES` (with a multi-line `Notes:` field for the bi
 ## Find and Replace in Files
 
 **Edit > Find in Files** (Ctrl+Shift+F) and **Replace in Files** (Ctrl+Shift+H) search the entire project, the current book or the current chapter. Options are Match case, Match whole word and regular expressions (`$1` works in replacements). Find All lists every match in Find Results, and double-clicking a row jumps to it. Replace All asks for confirmation first. In open chapters it can be undone with Ctrl+Z; closed chapters change when you save.
+
+## Security notes
+
+- A project file can only point its chapters at `.txt` or `.md` files inside the project folder (not in hidden folders such as `.git`). A shared or downloaded project that points elsewhere opens with a warning, and those chapters get new files inside the project when you save, so a project can never read, overwrite or delete files outside its folder.
+- WritingIDE runs Git with `core.fsmonitor` turned off and starts `git.exe` by its full path, so a repository's own settings cannot run a program when WritingIDE checks its status. Git hooks still run when you commit, as they would on the command line.
+- Extensions are ordinary .NET code with your rights: install only ones you trust. Only DLLs that reference the WritingIDE SDK are loaded as extensions.
 
 ## Git
 
@@ -121,7 +150,15 @@ File > Export (Ctrl+Shift+E) exports the whole manuscript, one book of a series,
 | Markdown | `#` book and `##` chapter headings; Import reads it back. |
 | For an AI chat | One Markdown file with the story bible, every story element (attributes and relationships), plot threads, chapter synopses, story dates and POV, and optionally the full text, plus your instructions at the top. It is also copied to the clipboard, ready to paste into any AI chat. |
 
-`*italic*`, `_italic_` and `**bold**` in the manuscript become real italics and bold in DOCX, EPUB and PDF. Extensions can add more formats.
+`*italic*`, `_italic_`, `**bold**` and `***bold italic***` in the manuscript become real italics and bold in DOCX, EPUB and PDF. Choose the **font** in the Export dialog (any installed font or one added to WritingIDE). PDF and EPUB embed it, unless its licence forbids embedding, in which case you get a note and the layout's own font; Word only names it. Extensions can add more formats.
+
+## Formatting and fonts
+
+- **Bold and italic**: Ctrl+B and Ctrl+I (or the toolbar buttons, Edit > Format, or the right-click menu) format the selection, or the word at the caret. Chapters stay plain text: formatting is stored as `**bold**` and `*italic*`, which the editor draws as real bold and italic with faded markers, and which Git, the grammar checker and every export understand. Selections widen to whole words, several paragraphs are formatted one by one, and pressing the shortcut again removes the formatting. **Clear Formatting** removes both. Only the markers change, so comments and tracked changes on the words stay put, and one Ctrl+Z undoes it.
+- **Editor font**: pick any font and size from the toolbar, or open **Tools > Fonts** for a preview. Distraction-free mode uses the same font a little larger.
+- **Your own fonts**: in Tools > Fonts, **Add font files...** copies `.ttf`, `.otf` or `.ttc` files into WritingIDE (`%LocalAppData%WritingIDEonts`) without installing them in windows. they appear in every font picker, work in the editor, and are embedded in pdf and epub exports. **remove** deletes an added font again.
+
+import moved to ctrl+shift+i so that ctrl+i can be italic.
 
 ## AI tools
 
@@ -170,7 +207,7 @@ public sealed class MyExtension : IWritingIdePlugin {
 
 ### Local REST API
 
-Turn it on in Tools > Extensions and API > Local API. It listens on `http://localhost:5719/api` (the port is configurable), on this computer only. Every request needs the token shown there, as `Authorization: Bearer <token>`.
+Turn it on in Tools > Extensions and API > Local API. It listens on `http://localhost:5719/api` (the port is configurable), on this computer only.  Request bodies are limited to 16 MB, and unexpected errors return a generic message (the details go to the Output window).
 
 | Request | Does |
 |---|---|
@@ -195,7 +232,7 @@ Invoke-RestMethod http://localhost:5719/api/chapters -Headers $h
 **Tools > Plugins** turns on [Harper](https://github.com/Automattic/harper), Automattic's open-source grammar checker. WritingIDE runs Harper's language server, `harper-ls`, on your computer (text never leaves it) and adds its findings to the Error List and squiggles under rule ID `HARPER`. Harper's quick fixes appear in Ctrl+. like the built-in ones.
 
 - **Uninstall** stops the plugin and deletes WritingIDE's copy of harper-ls. Copies installed elsewhere (PATH, Cargo) are left alone.
-- **Download and install latest** fetches the official Windows build from Harper's GitHub releases into `%LocalAppData%\WritingIDE\Plugins\Harper`. Alternatively, point the plugin at your own `harper-ls.exe`; it is also found on `PATH` and in `~/.cargo/bin`.
+- **Download and install latest** fetches the official Windows build from Harper's GitHub releases into `%LocalAppData%\WritingIDE\Plugins\Harper`, and installs it only if it matches the SHA-256 checksum GitHub publishes for it. Alternatively, point the plugin at your own `harper-ls.exe`; it is also found on `PATH` and in `~/.cargo/bin`.
 - Story element names and project-dictionary words are never reported as misspelled. Findings that a built-in rule already reported are dropped, and Harper's long-sentence check is switched off because NW3003 covers it.
 - Chapters are checked paragraph by paragraph and cached, so after the first pass only edited paragraphs go back to Harper. Background analysis when a project opens skips plugins; open chapters and **Analyze Manuscript** (F6) include them.
 - A project can switch Harper off like any rule in **Tools > Options > Grammar Rules**. The plugin's own on/off switch is a per-user setting.

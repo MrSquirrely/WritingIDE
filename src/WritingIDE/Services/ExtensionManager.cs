@@ -84,7 +84,11 @@ public sealed class ExtensionManager(MainViewModel shell) {
                     // A stray copy of the SDK or Core: WritingIDE's own is used.
                     continue;
                 }
-                Load(folder, dll);
+                // Only assemblies built against the SDK are extensions; the rest are their dependencies, which the
+                // extension's load context finds when it needs them (loading them here would load them twice).
+                if (ReferencesSdk(dll)) {
+                    Load(folder, dll);
+                }
             }
         }
     }
@@ -123,6 +127,22 @@ public sealed class ExtensionManager(MainViewModel shell) {
         }
         catch (Exception exception) when (exception is BadImageFormatException or FileLoadException or FileNotFoundException) {
             shell.Log($"warning: {Path.GetFileName(dll)} in {folder} is not a WritingIDE extension ({exception.Message}).");
+        }
+    }
+
+    /// <summary>Reads the assembly's references without loading it: true when it references WritingIDE.Sdk.</summary>
+    private static bool ReferencesSdk(string dll) {
+        try {
+            using FileStream stream = File.OpenRead(dll);
+            using System.Reflection.PortableExecutable.PEReader reader = new(stream);
+            if (!reader.HasMetadata) {
+                return false;
+            }
+            System.Reflection.Metadata.MetadataReader metadata = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(reader);
+            return metadata.AssemblyReferences.Any(handle => metadata.GetString(metadata.GetAssemblyReference(handle).Name).Equals("WritingIDE.Sdk", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException) {
+            return false;
         }
     }
 

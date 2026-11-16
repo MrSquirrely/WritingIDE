@@ -65,6 +65,9 @@ public sealed class NovelProject : ObservableObject {
     /// <summary>Chapter files removed since the last save; deleted from disk on save.</summary>
     public List<string> RemovedChapterFiles { get; } = [];
 
+    /// <summary>Problems found while loading (such as a chapter file outside the project), for the Output window.</summary>
+    public List<string> LoadWarnings { get; } = [];
+
     public bool IsDirty { get; set => SetProperty(ref field, value); }
 
     public IEnumerable<StoryEntity> GetEntities(EntityKind kind) {

@@ -28,6 +28,11 @@ public static class PdfExporter {
     }
 
     public static void Write(string path, ManuscriptDocument document, ExportOptions options) {
+        Write(path, document, options, []);
+    }
+
+    /// <param name="warnings">Receives a note when the chosen font cannot be used and the style's font is used instead.</param>
+    public static void Write(string path, ManuscriptDocument document, ExportOptions options, List<string> warnings) {
         lock (FontLock) {
             // PDFsharp allows this to be set once, and reading it first counts: so set it once, without reading.
             if (!_fontsConfigured) {
@@ -41,9 +46,10 @@ public static class PdfExporter {
             }
         }
         bool manuscript = options.Style == ExportStyle.Manuscript;
+        string font = ChooseFont(options, warnings);
         Layout layout = manuscript
-            ? new Layout { Width = 612, Height = 792, Margin = 72, FontName = "Times New Roman", FontSize = 12, LineHeight = 28.8, Indent = 36, Justify = false, Manuscript = true }
-            : new Layout { Width = 432, Height = 648, Margin = 54, FontName = "Georgia", FontSize = 10.5, LineHeight = 15, Indent = 18, Justify = true, Manuscript = false };
+            ? new Layout { Width = 612, Height = 792, Margin = 72, FontName = font, FontSize = 12, LineHeight = 28.8, Indent = 36, Justify = false, Manuscript = true }
+            : new Layout { Width = 432, Height = 648, Margin = 54, FontName = font, FontSize = 10.5, LineHeight = 15, Indent = 18, Justify = true, Manuscript = false };
 
         using PdfDocument pdf = new();
         pdf.Info.Title = document.Title;
@@ -64,6 +70,38 @@ public static class PdfExporter {
         pdf.Save(path);
     }
 
+    /// <summary>The chosen font when a PDF can embed it, otherwise the style's font (with a warning saying why).</summary>
+    private static string ChooseFont(ExportOptions options, List<string> warnings) {
+        string family = options.EffectiveFontFamily;
+        string fallback = ExportOptions.DefaultFontFamily(options.Style);
+        if (family.Equals(fallback, StringComparison.OrdinalIgnoreCase)) {
+            return family;
+        }
+        FontFamilyFaces? faces = FontCatalog.Installed.Find(family);
+        string? problem = faces is null ? $"The font '{family}' was not found"
+            : faces.Regular.IsEmbeddingRestricted ? $"The licence of '{family}' does not allow embedding it in documents"
+            : !faces.Regular.HasTrueTypeOutlines ? $"'{family}' is a PostScript-flavoured OpenType font, which the PDF exporter cannot embed"
+            : Damaged(faces);
+        if (problem is null) {
+            return family;
+        }
+        warnings.Add($"{problem}, so the PDF uses {fallback}.");
+        return fallback;
+    }
+
+    /// <summary>A problem description when one of the family's files cannot be read, otherwise null.</summary>
+    private static string? Damaged(FontFamilyFaces faces) {
+        try {
+            foreach (FontFace face in faces.All) {
+                FontCatalog.ExtractFace(face);
+            }
+            return null;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException) {
+            return exception.Message.TrimEnd('.');
+        }
+    }
+
     /// <summary>Lays text out page by page.</summary>
     private sealed class Writer(PdfDocument pdf, Layout layout, ManuscriptDocument document) {
         private XGraphics? _graphics;
@@ -72,6 +110,7 @@ public static class PdfExporter {
         private readonly XFont _regular = new(layout.FontName, layout.FontSize, XFontStyleEx.Regular);
         private readonly XFont _italic = new(layout.FontName, layout.FontSize, XFontStyleEx.Italic);
         private readonly XFont _bold = new(layout.FontName, layout.FontSize, XFontStyleEx.Bold);
+        private readonly XFont _boldItalic = new(layout.FontName, layout.FontSize, XFontStyleEx.BoldItalic);
         private readonly XFont _small = new(layout.FontName, layout.Manuscript ? 12 : 8.5, XFontStyleEx.Regular);
 
         private double Bottom => layout.Height - layout.Margin;
@@ -132,7 +171,7 @@ public static class PdfExporter {
         private void Paragraph(ExportParagraph paragraph, bool indent) {
             List<(string Word, XFont Font, bool SpaceBefore)> words = [];
             foreach (InlineRun run in paragraph.Runs) {
-                XFont font = run.Bold ? _bold : run.Italic ? _italic : _regular;
+                XFont font = run.Bold ? (run.Italic ? _boldItalic : _bold) : run.Italic ? _italic : _regular;
                 string text = run.Text;
                 int position = 0;
                 while (position < text.Length) {
@@ -227,34 +266,58 @@ public static class PdfExporter {
 }
 
 /// <summary>
-/// Finds the exporter's fonts in the Windows font folder (PDFsharp's own lookup misses some families, such as
-/// Georgia). Unknown families fall back to Times New Roman.
+/// Gives PDFsharp the font files from <see cref="FontCatalog"/>: installed fonts, fonts installed for this user and
+/// fonts added to WritingIDE, including faces inside .ttc collections (PDFsharp's own lookup misses many, Georgia
+/// among them). A missing bold or italic face is simulated; an unknown family falls back to Times New Roman.
 /// </summary>
 internal sealed class WindowsFontResolver : IFontResolver {
-    private static readonly Dictionary<string, string[]> Files = new(StringComparer.OrdinalIgnoreCase) {
-        // Regular, bold, italic, bold italic.
-        ["Times New Roman"] = ["times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"],
-        ["Georgia"] = ["georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"],
-        ["Courier New"] = ["cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"],
-        ["Arial"] = ["arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"]
-    };
+    private const string Fallback = "Times New Roman";
+    private readonly Dictionary<string, byte[]> _fonts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _gate = new();
 
     public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic) {
-        string family = Files.ContainsKey(familyName) && File.Exists(PathFor(Files[familyName][0])) ? familyName : "Times New Roman";
-        int style = (isBold ? 1 : 0) + (isItalic ? 2 : 0);
-        string file = Files[family][style];
-        // Simulate a missing style from the regular face rather than failing.
-        return File.Exists(PathFor(file))
-            ? new FontResolverInfo(file)
-            : new FontResolverInfo(Files[family][0], isBold, isItalic);
+        FontFamilyFaces? faces = Usable(FontCatalog.Installed.Find(familyName)) ?? Usable(FontCatalog.Installed.Find(Fallback));
+        if (faces is null) {
+            return null;
+        }
+        FontFace? face = faces.Get(isBold, isItalic);
+        if ((face is not null) && face.HasTrueTypeOutlines && !face.IsEmbeddingRestricted) {
+            return new FontResolverInfo(Key(face));
+        }
+        // Simulate the missing style from the regular face.
+        return new FontResolverInfo(Key(faces.Regular), isBold, isItalic);
     }
 
     public byte[]? GetFont(string faceName) {
-        string path = PathFor(faceName);
-        return File.Exists(path) ? File.ReadAllBytes(path) : null;
+        lock (_gate) {
+            if (_fonts.TryGetValue(faceName, out byte[]? cached)) {
+                return cached;
+            }
+            int hash = faceName.LastIndexOf('#');
+            if ((hash < 0) || !int.TryParse(faceName.AsSpan(hash + 1), CultureInfo.InvariantCulture, out int index)) {
+                return null;
+            }
+            string path = faceName[..hash];
+            FontFace? face = FontCatalog.Read(path).FirstOrDefault(candidate => candidate.FaceIndex == index);
+            if (face is null) {
+                return null;
+            }
+            try {
+                byte[] data = FontCatalog.ExtractFace(face);
+                _fonts[faceName] = data;
+                return data;
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException) {
+                return null;
+            }
+        }
     }
 
-    private static string PathFor(string file) {
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), file);
+    private static FontFamilyFaces? Usable(FontFamilyFaces? faces) {
+        return (faces is not null) && faces.Regular.HasTrueTypeOutlines && !faces.Regular.IsEmbeddingRestricted ? faces : null;
+    }
+
+    private static string Key(FontFace face) {
+        return $"{face.Path}#{face.FaceIndex.ToString(CultureInfo.InvariantCulture)}";
     }
 }

@@ -153,8 +153,14 @@ public sealed partial class GitService(string workingDirectory) {
         return result.Output;
     }
 
+    /// <summary>
+    /// git.exe found on PATH, as a full path. Starting "git" by name would also look in the current directory first,
+    /// so a git.exe inside an opened folder could run instead.
+    /// </summary>
+    private static readonly Lazy<string> GitExecutable = new(static () => FindOnPath("git.exe") ?? "git");
+
     public async Task<GitResult> RunAsync(TimeSpan timeout, params string[] arguments) {
-        ProcessStartInfo startInfo = new("git") {
+        ProcessStartInfo startInfo = new(GitExecutable.Value) {
             WorkingDirectory = WorkingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -163,6 +169,10 @@ public sealed partial class GitService(string workingDirectory) {
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
+        // WritingIDE runs status and log on its own whenever a project opens; a repository's own config must not be able
+        // to run a program then (core.fsmonitor names a command git runs on status).
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add("core.fsmonitor=false");
         foreach (string argument in arguments) {
             startInfo.ArgumentList.Add(argument);
         }
@@ -180,6 +190,21 @@ public sealed partial class GitService(string workingDirectory) {
             return new GitResult(-1, "", $"git {arguments.FirstOrDefault()} timed out after {timeout.TotalSeconds:0} seconds.");
         }
         return new GitResult(process.ExitCode, await output, await error);
+    }
+
+    /// <summary>The first <paramref name="fileName"/> in a PATH folder; relative PATH entries are skipped.</summary>
+    private static string? FindOnPath(string fileName) {
+        foreach (string folder in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)) {
+            string trimmed = folder.Trim().Trim('"');
+            if (!Path.IsPathFullyQualified(trimmed)) {
+                continue;
+            }
+            string candidate = Path.Combine(trimmed, fileName);
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     [GeneratedRegex(@"^## (?:No commits yet on )?(?<branch>[^.\s]+(?:\.[^.\s]+)*?)(?:\.\.\.(?<upstream>\S+))?(?: \[(?:ahead (?<ahead>\d+))?(?:, )?(?:behind (?<behind>\d+))?\])?\s*$")]

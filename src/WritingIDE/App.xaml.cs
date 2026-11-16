@@ -23,6 +23,8 @@ public partial class App : Application {
         MainWindow window = new(viewModel);
         MainWindow = window;
         window.Show();
+        // A quiet check: a newer version downloads in the background and installs when WritingIDE closes.
+        _ = viewModel.Updates.CheckAsync(interactive: false);
 
         string? projectPath = e.Args.FirstOrDefault(static arg => arg.EndsWith(Core.Persistence.ProjectSerializer.Extension, StringComparison.OrdinalIgnoreCase));
         if (projectPath is not null) {
@@ -31,6 +33,12 @@ public partial class App : Application {
         else {
             viewModel.ShowStartPage();
         }
+    }
+
+    /// <summary>Hands a downloaded update to the installer, which applies it once WritingIDE has exited.</summary>
+    protected override void OnExit(ExitEventArgs e) {
+        _viewModel?.Updates.ApplyOnExit();
+        base.OnExit(e);
     }
 
     /// <summary>Windows is shutting down or the user is signing out: keep a recovery snapshot of unsaved work.</summary>

@@ -1,7 +1,6 @@
-using System.Text.RegularExpressions;
-
 using WritingIDE.Core.Analysis;
 using WritingIDE.Core.Model;
+using WritingIDE.Core.Text;
 
 namespace WritingIDE.Core.Export;
 
@@ -41,6 +40,16 @@ public sealed record ExportOptions {
 
     /// <summary>AI export: what the writer wants from the AI, placed at the top.</summary>
     public string AiInstructions { get; init; } = "";
+
+    /// <summary>The body font for Word, PDF and EPUB; null or empty uses the style's own (Times New Roman or Georgia).</summary>
+    public string? FontFamily { get; init; }
+
+    /// <summary>The font the export uses: <see cref="FontFamily"/>, or the style's default.</summary>
+    public string EffectiveFontFamily => string.IsNullOrWhiteSpace(FontFamily) ? DefaultFontFamily(Style) : FontFamily.Trim();
+
+    public static string DefaultFontFamily(ExportStyle style) {
+        return style == ExportStyle.Manuscript ? "Times New Roman" : "Georgia";
+    }
 }
 
 /// <summary>A run of text inside a paragraph, with *italic* and **bold** from the manuscript's Markdown-style emphasis.</summary>
@@ -66,7 +75,7 @@ public sealed record ManuscriptDocument(string Title, string Author, IReadOnlyLi
     public int RoundedWords => Words < 1000 ? Words : (Words < 10000 ? (int)Math.Round(Words / 100.0) * 100 : (int)Math.Round(Words / 1000.0) * 1000);
 }
 
-public static partial class ManuscriptDocumentBuilder {
+public static class ManuscriptDocumentBuilder {
     /// <summary>Builds the export structure: books (in a series) and chapters, split into paragraphs and scene breaks.</summary>
     public static ManuscriptDocument Build(NovelProject project, IReadOnlyList<Chapter> chapters, Func<Chapter, string> getText) {
         List<ExportBook> books = [];
@@ -103,24 +112,20 @@ public static partial class ManuscriptDocumentBuilder {
         return paragraphs;
     }
 
-    /// <summary>Splits *italic*, _italic_ and **bold** emphasis into runs; unmatched markers stay as text.</summary>
+    /// <summary>Splits *italic*, _italic_, **bold** and ***bold italic*** emphasis into runs; unmatched markers stay as text.</summary>
     public static IReadOnlyList<InlineRun> ParseInline(string line) {
         List<InlineRun> runs = [];
         int position = 0;
-        foreach (Match match in Emphasis().Matches(line)) {
-            if (match.Index > position) {
-                runs.Add(new InlineRun(line[position..match.Index], false, false));
+        foreach (EmphasisSpan span in Emphasis.Find(line)) {
+            if (span.Start > position) {
+                runs.Add(new InlineRun(line[position..span.Start], false, false));
             }
-            bool bold = match.Groups["bold"].Success;
-            runs.Add(new InlineRun(bold ? match.Groups["bold"].Value : match.Groups["italic"].Success ? match.Groups["italic"].Value : match.Groups["under"].Value, !bold, bold));
-            position = match.Index + match.Length;
+            runs.Add(new InlineRun(line.Substring(span.ContentStart, span.ContentLength), span.Italic, span.Bold));
+            position = span.End;
         }
         if (position < line.Length) {
             runs.Add(new InlineRun(line[position..], false, false));
         }
         return runs;
     }
-
-    [GeneratedRegex(@"\*\*(?<bold>[^*\n]+)\*\*|(?<![\w*])\*(?<italic>[^*\s][^*\n]*?)\*(?![\w*])|(?<!\w)_(?<under>[^_\s][^_\n]*?)_(?!\w)")]
-    private static partial Regex Emphasis();
 }

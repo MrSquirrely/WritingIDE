@@ -14,6 +14,7 @@ using WritingIDE.Core.Grammar;
 using WritingIDE.Core.Model;
 using WritingIDE.Core.Text;
 using WritingIDE.Infrastructure;
+using WritingIDE.Services;
 using WritingIDE.ViewModels;
 
 namespace WritingIDE.Editor;
@@ -43,8 +44,8 @@ public sealed class ManuscriptEditor : TextEditor {
         _owner = owner;
         Document = owner.Document;
 
-        FontFamily = new FontFamily("Cambria, Georgia, Times New Roman");
-        FontSize = 16;
+        ApplyFont();
+        FontLibrary.Changed += ApplyFont;
         WordWrap = true;
         ShowLineNumbers = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -83,6 +84,7 @@ public sealed class ManuscriptEditor : TextEditor {
         };
         TextArea.TextView.BackgroundRenderers.Add(_revisions);
         TextArea.TextView.LineTransformers.Add(new ManuscriptMarkupColorizer());
+        TextArea.TextView.LineTransformers.Add(new EmphasisColorizer());
         _bookmarks = new BookmarkMargin(owner.CommentSegments, line => owner.ToggleBookmark(line));
         TextArea.LeftMargins.Insert(0, _bookmarks);
         ApplyRevisions(owner.RevisionChanges);
@@ -91,6 +93,7 @@ public sealed class ManuscriptEditor : TextEditor {
 
         TextArea.Caret.PositionChanged += (_, _) => UpdateCaretStatus();
         TextArea.GotKeyboardFocus += (_, _) => UpdateCaretStatus();
+        TextArea.GotKeyboardFocus += (_, _) => LastFocused = DateTime.UtcNow;
         MouseHover += OnMouseHover;
         MouseHoverStopped += (_, _) => _toolTip.IsOpen = false;
         MouseLeave += (_, _) => _toolTip.IsOpen = false;
@@ -116,9 +119,50 @@ public sealed class ManuscriptEditor : TextEditor {
         TextArea.TextView.Redraw();
     }
 
+    /// <summary>When the editor last had the keyboard, so toolbar commands act on the editor the writer was in.</summary>
+    public DateTime LastFocused { get; private set; }
+
+    /// <summary>The editor font from Tools > Fonts (a little larger in distraction-free mode).</summary>
+    private void ApplyFont() {
+        FontFamily = FontLibrary.EditorFamily;
+        FontSize = FontLibrary.EditorSize + (_focusMode ? 3 : 0);
+        // Runs first from the constructor, before the lenses exist.
+        if (_lenses?.HasLenses == true) {
+            Dispatcher.InvokeAsync(() => TextArea.TextView.Redraw(), System.Windows.Threading.DispatcherPriority.Background);
+        }
+    }
+
+    /// <summary>
+    /// Bold, italic or clear formatting on the selection (or the word at the caret), by adding or removing emphasis
+    /// markers. Only the markers change, so comments and revision marks on the words stay where they are; one undo
+    /// step reverts it.
+    /// </summary>
+    public void ApplyFormat(FormatCommand command) {
+        string text = Document.Text;
+        FormatEdit edit = TextFormatting.Apply(text, SelectionStart, SelectionLength, command);
+        IReadOnlyList<(int Offset, int RemoveLength, string Insert)> changes = TextFormatting.ToChanges(text, edit);
+        if (changes.Count == 0) {
+            _owner.Shell.StatusText = command == FormatCommand.Clear ? "No bold or italic here to clear" : "Nothing to format here";
+            return;
+        }
+        Document.BeginUpdate();
+        try {
+            foreach ((int offset, int remove, string insert) in changes) {
+                Document.Replace(offset, remove, insert);
+            }
+        }
+        finally {
+            Document.EndUpdate();
+        }
+        Select(edit.SelectionStart, edit.SelectionLength);
+        TextArea.Caret.Offset = edit.SelectionStart + edit.SelectionLength;
+        TextArea.Focus();
+    }
+
     /// <summary>Releases the theme subscription when the chapter is closed.</summary>
     public void Detach() {
         AppTheme.Changed -= ApplyTheme;
+        FontLibrary.Changed -= ApplyFont;
         _completion.Close();
     }
 
@@ -175,7 +219,7 @@ public sealed class ManuscriptEditor : TextEditor {
         _focusMode = enabled;
         ShowLineNumbers = !enabled;
         Options.HighlightCurrentLine = !enabled;
-        FontSize = enabled ? 19 : 16;
+        ApplyFont();
         ApplyTheme();
         UpdateFocusLayout();
         UpdateLenses();
@@ -301,6 +345,14 @@ public sealed class ManuscriptEditor : TextEditor {
         if ((key == Key.K) && (modifiers == ModifierKeys.Control)) {
             _chordPending = true;
             _owner.Shell.StatusText = "(Ctrl+K) was pressed. Waiting for the second key of the chord...";
+            e.Handled = true;
+        }
+        else if ((key == Key.B) && (modifiers == ModifierKeys.Control)) {
+            ApplyFormat(FormatCommand.Bold);
+            e.Handled = true;
+        }
+        else if ((key == Key.I) && (modifiers == ModifierKeys.Control)) {
+            ApplyFormat(FormatCommand.Italic);
             e.Handled = true;
         }
         else if ((key == Key.Enter) && (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))) {
@@ -552,6 +604,10 @@ public sealed class ManuscriptEditor : TextEditor {
             menu.Items.Add(new Separator());
         }
 
+        menu.Items.Add(CreateMenuItem("Bold", "\uE8DD", () => ApplyFormat(FormatCommand.Bold), "Ctrl+B"));
+        menu.Items.Add(CreateMenuItem("Italic", "\uE8DB", () => ApplyFormat(FormatCommand.Italic), "Ctrl+I"));
+        menu.Items.Add(CreateMenuItem("Clear Formatting", "\uE894", () => ApplyFormat(FormatCommand.Clear)));
+        menu.Items.Add(new Separator());
         menu.Items.Add(CreateMenuItem(SelectionLength > 0 ? "Add Comment on Selection" : "Add Comment", "\uE90A", AddComment, "Ctrl+Alt+M"));
         CommentSegment? commented = _owner.CommentSegments.FindSegmentsContaining(offset).FirstOrDefault(static segment => segment.Comment.Kind == MarkerKind.Comment);
         if (commented is not null) {

@@ -391,7 +391,12 @@ public sealed partial class ChapterDocumentViewModel : DocumentViewModel {
         Chapter.Text = text;
         try {
             // TryAnalyze returns null when superseded, so cancellation never surfaces as an exception (or a debugger break).
-            AnalysisResult? result = await Task.Run(() => engine.TryAnalyze(text, options, cancellation.Token));
+            // Revision mode's word diff runs with the analysis, off the UI thread.
+            string? baseline = RevisionBaselineForAnalysis;
+            (AnalysisResult? result, IReadOnlyList<RevisionChange>? changes) = await Task.Run(() => {
+                AnalysisResult? analysis = engine.TryAnalyze(text, options, cancellation.Token);
+                return (analysis, (analysis is not null) && (baseline is not null) ? RevisionTracker.Compare(baseline, text) : null);
+            });
             if ((result is null) || cancellation.IsCancellationRequested || (version.CompareAge(Document.Version) != 0)) {
                 return;
             }
@@ -407,7 +412,7 @@ public sealed partial class ChapterDocumentViewModel : DocumentViewModel {
             foreach (ManuscriptEditor editor in AllEditors) {
                 editor.ApplyAnalysis(result);
             }
-            UpdateAfterAnalysis(text);
+            UpdateAfterAnalysis(baseline, changes);
         }
         catch (OperationCanceledException) {
             // Superseded by a newer analysis.

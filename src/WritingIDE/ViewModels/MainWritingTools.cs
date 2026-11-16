@@ -323,12 +323,13 @@ public sealed partial class MainViewModel {
         foreach (ChapterDocumentViewModel document in Documents.OfType<ChapterDocumentViewModel>()) {
             document.SyncComments();
         }
+        IReadOnlyList<string> warnings = [];
         try {
             if (extension is not null) {
                 extension.Export(save.FileName, Extensions.ProjectApi);
             }
             else {
-                Exporter.Export(save.FileName, Project, options, GetChapterText);
+                warnings = Exporter.Export(save.FileName, Project, options, GetChapterText);
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException) {
@@ -336,6 +337,10 @@ public sealed partial class MainViewModel {
             return null;
         }
         Log($"Exported {(extension?.Name ?? options.Format.ToString())} to {save.FileName}");
+        foreach (string warning in warnings) {
+            Log($"  {warning}");
+            Notify(warning, NotificationKind.Warning);
+        }
         StatusText = "Export complete";
         if (options.Format == ExportFormat.GoogleDocs) {
             // Google Docs converts an uploaded .docx: show the file and open Google Drive to upload it.

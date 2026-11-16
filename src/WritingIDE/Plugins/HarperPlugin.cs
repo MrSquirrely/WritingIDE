@@ -66,7 +66,11 @@ public sealed class HarperPlugin : ObservableObject, IDisposable {
             candidates.AddRange(Directory.EnumerateFiles(InstallDirectory, "harper-ls.exe", SearchOption.AllDirectories));
         }
         foreach (string folder in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)) {
-            candidates.Add(Path.Combine(folder.Trim('"'), "harper-ls.exe"));
+            // Relative PATH entries would resolve against the current directory.
+            string trimmed = folder.Trim().Trim('"');
+            if (Path.IsPathFullyQualified(trimmed)) {
+                candidates.Add(Path.Combine(trimmed, "harper-ls.exe"));
+            }
         }
         candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cargo", "bin", "harper-ls.exe"));
         return candidates.FirstOrDefault(File.Exists);

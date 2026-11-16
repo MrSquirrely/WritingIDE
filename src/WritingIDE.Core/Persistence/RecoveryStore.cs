@@ -20,21 +20,47 @@ public static class RecoveryStore {
     /// <summary>Where snapshots are kept (tests point this elsewhere).</summary>
     public static string RootDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WritingIDE", "Recovery");
 
+    private static readonly Lock WriteGate = new();
+
+    /// <summary>Bumped by <see cref="Delete"/>, so a snapshot captured before a save is never written after it.</summary>
+    private static long _generation;
+
     /// <summary>Writes a snapshot atomically (temporary file, then rename) so a crash mid-write never leaves a broken one.</summary>
     public static void Write(NovelProject project, Func<Chapter, string> getText) {
+        Capture(project, getText)();
+    }
+
+    /// <summary>
+    /// Takes the snapshot now (on the thread that owns the project) and returns the slow part, serializing and
+    /// writing it, to run on any thread. If the project is saved before that runs, the write is skipped.
+    /// </summary>
+    public static Action Capture(NovelProject project, Func<Chapter, string> getText) {
         if (string.IsNullOrEmpty(project.FilePath)) {
-            return;
+            return static () => {
+            };
         }
-        Directory.CreateDirectory(RootDirectory);
         RecoveryFile file = new() {
             ProjectFilePath = project.FilePath,
             SavedAtUtc = DateTime.UtcNow,
             Project = ProjectSerializer.ToDto(project, getText)
         };
         string target = PathFor(project.FilePath);
-        string temporary = target + ".tmp";
-        File.WriteAllText(temporary, ProjectSerializer.Serialize(file), Encoding.UTF8);
-        File.Move(temporary, target, overwrite: true);
+        long generation;
+        lock (WriteGate) {
+            generation = _generation;
+        }
+        return () => {
+            string json = ProjectSerializer.Serialize(file);
+            lock (WriteGate) {
+                if (generation != _generation) {
+                    return;
+                }
+                Directory.CreateDirectory(RootDirectory);
+                string temporary = target + ".tmp";
+                File.WriteAllText(temporary, json, Encoding.UTF8);
+                File.Move(temporary, target, overwrite: true);
+            }
+        };
     }
 
     /// <summary>The snapshot for a project, if one exists and is newer than the project file on disk.</summary>
@@ -78,13 +104,16 @@ public static class RecoveryStore {
 
     public static void Delete(string projectFilePath) {
         string path = PathFor(projectFilePath);
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
+        lock (WriteGate) {
+            _generation++;
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
             }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
-            // A stale snapshot is harmless: Find ignores snapshots older than the project file.
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) {
+                // A stale snapshot is harmless: Find ignores snapshots older than the project file.
+            }
         }
     }
 

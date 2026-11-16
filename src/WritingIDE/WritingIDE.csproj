@@ -10,10 +10,25 @@
     <AssemblyTitle>WritingIDE</AssemblyTitle>
     <Product>WritingIDE</Product>
     <ApplicationIcon>Assets\WritingIDE.ico</ApplicationIcon>
+    <!-- Windows 10/11 only: per-monitor DPI v2, long paths, Windows 10 compatibility. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Program.Main runs Velopack's install/update hooks before the WPF app starts. -->
+    <StartupObject>WritingIDE.Program</StartupObject>
+    <!-- The release script sets the real version: build\release.ps1 -Version 1.2.0 -->
+    <Version>0.1.0</Version>
+    <!--
+      Where installed copies look for updates: a GitHub repository URL with public releases, or any HTTPS folder that
+      holds the files "vpk pack" produced. Empty: no update checks. Usually passed by the release script.
+    -->
+    <UpdateUrl></UpdateUrl>
   </PropertyGroup>
 
   <ItemGroup>
     <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="UpdateUrl" Value="$(UpdateUrl)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +38,7 @@
   <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
     <PackageReference Include="HandyControls" Version="3.7.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>

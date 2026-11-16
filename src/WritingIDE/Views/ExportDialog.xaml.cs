@@ -1,9 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 using WritingIDE.Core.Export;
 using WritingIDE.Core.Model;
 using WritingIDE.Sdk;
+using WritingIDE.Services;
 using WritingIDE.ViewModels;
 
 namespace WritingIDE.Views;
@@ -14,7 +16,12 @@ public partial class ExportDialog : HandyControl.Controls.Window {
 
     public sealed record ScopeChoice(string Label, IReadOnlyList<Chapter> Chapters);
 
-    public sealed record FormatChoice(string Glyph, string Title, string Description, string Help, ExportFormat Format, IManuscriptExporter? Extension = null);
+    public sealed record FormatChoice(string Glyph, string Title, string Description, string Help, ExportFormat Format, IManuscriptExporter? Extension = null) {
+        /// <summary>What screen readers announce for the list item.</summary>
+        public override string ToString() {
+            return $"{Title}: {Description}";
+        }
+    }
 
     public ExportDialog(MainViewModel shell, NovelProject project) {
         InitializeComponent();
@@ -51,7 +58,18 @@ public partial class ExportDialog : HandyControl.Controls.Window {
         ScopeBox.DisplayMemberPath = nameof(ScopeChoice.Label);
         ScopeBox.SelectedIndex = 0;
         ContactBox.Text = project.Author;
+        List<FontOption> fonts = [new("Default for the layout (Times New Roman or Georgia)", null, new FontFamily("Segoe UI"))];
+        fonts.AddRange(FontLibrary.Choices.Select(static choice => new FontOption(choice.IsAdded ? $"{choice.Name}  (added)" : choice.Name, choice.Name, choice.Family)));
+        FontBox.ItemsSource = fonts;
+        FontBox.SelectedIndex = 0;
         FormatList.SelectedIndex = 0;
+    }
+
+    /// <summary>A font in the export picker; <see cref="Family"/> null means the layout's own font.</summary>
+    public sealed record FontOption(string Label, string? Family, FontFamily Display) {
+        public override string ToString() {
+            return Label;
+        }
     }
 
     private FormatChoice? Selected => FormatList.SelectedItem as FormatChoice;
@@ -66,6 +84,12 @@ public partial class ExportDialog : HandyControl.Controls.Window {
         StylePanel.Visibility = book ? Visibility.Visible : Visibility.Collapsed;
         TitlePanel.Visibility = choice.Extension is null && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs) ? Visibility.Visible : Visibility.Collapsed;
         AiPanel.Visibility = (choice.Extension is null) && (choice.Format == ExportFormat.AiContext) ? Visibility.Visible : Visibility.Collapsed;
+        FontPanel.Visibility = (choice.Extension is null) && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs) ? Visibility.Visible : Visibility.Collapsed;
+        FontHelp.Text = choice.Format switch {
+            ExportFormat.Pdf => "The PDF embeds the font, so it looks the same everywhere (unless the font's licence forbids embedding).",
+            ExportFormat.Epub => "The e-book embeds the font when its licence allows; otherwise readers use their own font.",
+            _ => "Word names the font; it shows on PCs where that font is installed."
+        };
         ScopeBox.IsEnabled = choice.Extension is null;
     }
 
@@ -82,7 +106,8 @@ public partial class ExportDialog : HandyControl.Controls.Window {
             SceneBreak = manuscript && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf) ? "#" : "* * *",
             Contact = ContactBox.Text,
             IncludeFullText = FullTextBox.IsChecked == true,
-            AiInstructions = InstructionsBox.Text
+            AiInstructions = InstructionsBox.Text,
+            FontFamily = (FontBox.SelectedItem as FontOption)?.Family
         };
         if (_shell.Export(options, choice.Extension) is not null) {
             DialogResult = true;

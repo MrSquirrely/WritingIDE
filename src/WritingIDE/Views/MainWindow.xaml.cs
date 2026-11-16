@@ -162,9 +162,9 @@ public partial class MainWindow : HandyControl.Controls.Window {
         base.OnKeyDown(e);
     }
 
-    /// <summary>The editor consumes Ctrl+I (it is the Tab character), so the Import shortcut is handled before it gets there.</summary>
+    /// <summary>The editor would take Ctrl+Shift+I as text input, so Import is handled before it gets there (Ctrl+I is italic).</summary>
     protected override void OnPreviewKeyDown(KeyEventArgs e) {
-        if ((e.Key == Key.I) && (Keyboard.Modifiers == ModifierKeys.Control) && _viewModel.ImportCommand.CanExecute(null)) {
+        if ((e.Key == Key.I) && (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) && _viewModel.ImportCommand.CanExecute(null)) {
             _viewModel.ImportCommand.Execute(null);
             e.Handled = true;
             return;
@@ -279,7 +279,7 @@ public partial class MainWindow : HandyControl.Controls.Window {
                 }
                 menu.Items.Add(add);
                 menu.Items.Add(CreateItem(project.IsSeries ? "Series Bible" : "Story Bible", _viewModel.OpenStoryBible, Infrastructure.Visuals.BibleGlyph));
-                menu.Items.Add(CreateItem("Import...", () => _viewModel.ImportCommand.Execute(null), "\uE8B5", "Ctrl+I"));
+                menu.Items.Add(CreateItem("Import...", () => _viewModel.ImportCommand.Execute(null), "\uE8B5", "Ctrl+Shift+I"));
                 menu.Items.Add(CreateItem("Analyze Manuscript", () => _viewModel.AnalyzeAllCommand.Execute(null), "\uE768", "F6"));
                 if (!project.IsSeries) {
                     menu.Items.Add(CreateItem("Convert to Series...", () => _viewModel.ConvertToSeriesCommand.Execute(null), Infrastructure.Visuals.SeriesGlyph));

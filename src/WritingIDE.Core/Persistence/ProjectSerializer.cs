@@ -44,7 +44,13 @@ public static class ProjectSerializer {
         foreach (BookDto bookDto in dto.Books) {
             project.Books.Add(new Book(bookDto.Title) { Id = bookDto.Id, Synopsis = bookDto.Synopsis });
         }
+        string directory = Path.GetDirectoryName(filePath) ?? "";
         foreach (ChapterDto chapterDto in dto.Chapters) {
+            if (!IsSafeChapterFile(directory, chapterDto.File)) {
+                // Never read or write outside the project: the chapter gets a new file inside it on the next save.
+                project.LoadWarnings.Add($"Chapter '{chapterDto.Title}' pointed to a file outside the project folder ('{chapterDto.File}'); it was ignored and the chapter gets a new file when you save.");
+                chapterDto.File = "";
+            }
             Chapter chapter = new(chapterDto.Title) {
                 Id = chapterDto.Id,
                 BookId = chapterDto.BookId,
@@ -110,7 +116,7 @@ public static class ProjectSerializer {
 
         HashSet<string> usedFiles = new(StringComparer.OrdinalIgnoreCase);
         foreach (Chapter chapter in project.Chapters) {
-            if (string.IsNullOrEmpty(chapter.FileName) || !usedFiles.Add(chapter.FileName)) {
+            if (string.IsNullOrEmpty(chapter.FileName) || !IsSafeChapterFile(directory, chapter.FileName) || !usedFiles.Add(chapter.FileName)) {
                 // Series keep each book's chapters in their own folder: Manuscript/<Book>/<Chapter>.txt
                 Book? book = project.FindBook(chapter.BookId);
                 string folder = book is null ? ManuscriptFolder : Path.Combine(ManuscriptFolder, Sanitize(book.Title, "Book"));
@@ -123,7 +129,7 @@ public static class ProjectSerializer {
         }
         foreach (string removed in project.RemovedChapterFiles) {
             string removedPath = Path.Combine(directory, removed);
-            if (!usedFiles.Contains(removed) && File.Exists(removedPath)) {
+            if (!usedFiles.Contains(removed) && IsSafeChapterFile(directory, removed) && File.Exists(removedPath)) {
                 File.Delete(removedPath);
                 // Drop a book folder that is now empty (Manuscript/<Book>/), but never Manuscript itself.
                 string? folder = Path.GetDirectoryName(removedPath);
@@ -227,6 +233,36 @@ public static class ProjectSerializer {
         return project;
     }
 
+    /// <summary>
+    /// True when a chapter file name from a project file stays inside the project folder: relative, a .txt or .md file,
+    /// with no ".." or hidden ("." first, such as .git) folders, no drive or stream (":") and no device names. A shared
+    /// or downloaded project could otherwise make WritingIDE read, overwrite or delete any file the writer can.
+    /// </summary>
+    public static bool IsSafeChapterFile(string projectDirectory, string? fileName) {
+        if (string.IsNullOrWhiteSpace(fileName) || Path.IsPathRooted(fileName) || fileName.Contains(':') || (fileName.IndexOfAny(Path.GetInvalidPathChars()) >= 0)) {
+            return false;
+        }
+        string extension = Path.GetExtension(fileName);
+        if (!extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".md", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        foreach (string segment in fileName.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)) {
+            string stem = Path.GetFileNameWithoutExtension(segment).Trim().ToUpperInvariant();
+            if (segment.StartsWith('.') || segment.EndsWith('.') || segment.EndsWith(' ') || ReservedNames.Contains(stem)) {
+                return false;
+            }
+        }
+        string root = Path.GetFullPath(projectDirectory.Length == 0 ? "." : projectDirectory);
+        string full = Path.GetFullPath(Path.Combine(root, fileName));
+        return full.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.Ordinal) {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
+
     private static string CreateChapterFileName(string title, string folder, HashSet<string> usedFiles) {
         string baseName = Sanitize(title, "Chapter");
         string candidate = Path.Combine(folder, baseName + ".txt");
@@ -242,7 +278,11 @@ public static class ProjectSerializer {
         foreach (char c in name) {
             builder.Append(Path.GetInvalidFileNameChars().Contains(c) ? '_' : c);
         }
-        string sanitized = builder.ToString().Trim().TrimEnd('.');
+        // Never a name IsSafeChapterFile refuses: no leading or trailing dots, no device names ("Con", "Aux").
+        string sanitized = builder.ToString().Trim().Trim('.').Trim();
+        if (ReservedNames.Contains(sanitized.ToUpperInvariant())) {
+            sanitized += "_";
+        }
         return sanitized.Length == 0 ? fallback : sanitized;
     }
 

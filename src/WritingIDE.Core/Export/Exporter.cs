@@ -26,30 +26,47 @@ public static class Exporter {
         };
     }
 
-    public static void Export(string path, NovelProject project, ExportOptions options, Func<Chapter, string> getText) {
+    /// <returns>Notes about the export, such as a font that could not be embedded; usually empty.</returns>
+    public static IReadOnlyList<string> Export(string path, NovelProject project, ExportOptions options, Func<Chapter, string> getText) {
+        List<string> warnings = [];
         switch (options.Format) {
             case ExportFormat.AiContext:
                 File.WriteAllText(path, AiContextExporter.Build(project, options, getText), Encoding.UTF8);
-                return;
+                return warnings;
             case ExportFormat.Markdown:
                 File.WriteAllText(path, Markdown(project, options, getText), Encoding.UTF8);
-                return;
+                return warnings;
         }
         ManuscriptDocument document = ManuscriptDocumentBuilder.Build(project, options.Chapters, getText);
         switch (options.Format) {
             case ExportFormat.Docx:
                 DocxExporter.Write(path, document, options);
+                WarnIfNotInstalled(options, warnings);
                 break;
             case ExportFormat.GoogleDocs:
                 // Google Docs keeps Heading 1 chapters (its outline) and page breaks; book styling converts best.
                 DocxExporter.Write(path, document, options with { Style = ExportStyle.Book });
+                WarnIfNotInstalled(options with { Style = ExportStyle.Book }, warnings);
                 break;
             case ExportFormat.Epub:
-                EpubExporter.Write(path, document, options);
+                EpubExporter.Write(path, document, options, warnings);
                 break;
             case ExportFormat.Pdf:
-                PdfExporter.Write(path, document, options);
+                PdfExporter.Write(path, document, options, warnings);
                 break;
+        }
+        return warnings;
+    }
+
+    /// <summary>A Word file only names its font: say so when the font exists only inside WritingIDE (or not at all).</summary>
+    private static void WarnIfNotInstalled(ExportOptions options, List<string> warnings) {
+        string family = options.EffectiveFontFamily;
+        FontFamilyFaces? faces = FontCatalog.Installed.Find(family);
+        if (faces is null) {
+            warnings.Add($"The font '{family}' was not found on this PC; Word shows the document in its default font until it is installed.");
+        }
+        else if (faces.All.All(static face => face.Path.StartsWith(FontCatalog.AppFontsFolder, StringComparison.OrdinalIgnoreCase))) {
+            warnings.Add($"'{family}' was added to WritingIDE only. Word shows it on PCs where the font is installed; elsewhere it uses a default font.");
         }
     }
 

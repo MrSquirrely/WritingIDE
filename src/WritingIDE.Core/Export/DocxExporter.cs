@@ -25,7 +25,7 @@ public static class DocxExporter {
         using WordprocessingDocument package = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         MainDocumentPart main = package.AddMainDocumentPart();
         bool manuscript = options.Style == ExportStyle.Manuscript;
-        AddStyles(main, manuscript);
+        AddStyles(main, manuscript, options.EffectiveFontFamily);
         package.PackageProperties.Title = document.Title;
         package.PackageProperties.Creator = document.Author;
 
@@ -132,8 +132,7 @@ public static class DocxExporter {
         return string.Join(' ', words.Take(3));
     }
 
-    private static void AddStyles(MainDocumentPart main, bool manuscript) {
-        string font = manuscript ? "Times New Roman" : "Georgia";
+    private static void AddStyles(MainDocumentPart main, bool manuscript, string font) {
         string size = manuscript ? "24" : "22";
         string line = manuscript ? "480" : "300";
         StyleDefinitionsPart part = main.AddNewPart<StyleDefinitionsPart>();
