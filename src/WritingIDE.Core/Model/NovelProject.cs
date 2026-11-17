@@ -62,6 +62,9 @@ public sealed class NovelProject : ObservableObject {
 
     public ObservableCollection<string> DisabledRules { get; } = [];
 
+    /// <summary>Values extensions keep in the project file: extension id, then the extension's own keys.</summary>
+    public Dictionary<string, Dictionary<string, string>> ExtensionData { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Chapter files removed since the last save; deleted from disk on save.</summary>
     public List<string> RemovedChapterFiles { get; } = [];
 

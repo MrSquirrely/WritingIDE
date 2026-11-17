@@ -14,6 +14,7 @@ using WritingIDE.Core.Grammar;
 using WritingIDE.Core.Model;
 using WritingIDE.Core.Text;
 using WritingIDE.Infrastructure;
+using WritingIDE.Sdk;
 using WritingIDE.Services;
 using WritingIDE.ViewModels;
 
@@ -92,6 +93,8 @@ public sealed class ManuscriptEditor : TextEditor {
         SizeChanged += (_, _) => UpdateFocusLayout();
 
         TextArea.Caret.PositionChanged += (_, _) => UpdateCaretStatus();
+        TextArea.Caret.PositionChanged += (_, _) => ReportSelection();
+        TextArea.SelectionChanged += (_, _) => ReportSelection();
         TextArea.GotKeyboardFocus += (_, _) => UpdateCaretStatus();
         TextArea.GotKeyboardFocus += (_, _) => LastFocused = DateTime.UtcNow;
         MouseHover += OnMouseHover;
@@ -309,6 +312,38 @@ public sealed class ManuscriptEditor : TextEditor {
     private void UpdateCaretStatus() {
         _owner.Shell.CaretLine = TextArea.Caret.Line;
         _owner.Shell.CaretColumn = TextArea.Caret.Column;
+    }
+
+    private (int Caret, int Start, int Length) _reportedSelection = (-1, -1, -1);
+
+    /// <summary>Tells extensions that the caret or selection moved (once per change: the caret and the selection both report).</summary>
+    private void ReportSelection() {
+        (int Caret, int Start, int Length) selection = (TextArea.Caret.Offset, SelectionStart, SelectionLength);
+        if (selection != _reportedSelection) {
+            _reportedSelection = selection;
+            _owner.Shell.Extensions?.RaiseSelectionChanged(_owner.Chapter.Id, selection.Caret, selection.Start, selection.Length);
+        }
+    }
+
+    /// <summary>The commands extensions added to the right-click menu, under their own separator.</summary>
+    private void AddExtensionCommands(ContextMenu menu, int offset) {
+        ExtensionManager extensions = _owner.Shell.Extensions;
+        List<EditorCommand> commands = extensions.EditorCommands.ToList();
+        if (commands.Count == 0) {
+            return;
+        }
+        (int start, int length) = Tokenizer.GetWordAt(Document.Text, offset);
+        EditorContext context = new(_owner.Chapter.Id, offset, SelectionStart, SelectionLength, SelectedText, length > 0 ? Document.GetText(start, length) : "", GetEntityAt(offset)?.Id);
+        bool any = false;
+        foreach (EditorCommand command in commands.Where(command => extensions.IsAvailable(command, context))) {
+            if (!any) {
+                menu.Items.Add(new Separator());
+                any = true;
+            }
+            MenuItem item = CreateMenuItem(command.Title, Visuals.PluginGlyph, () => extensions.Run(command.Title, () => command.Execute(context)));
+            item.ToolTip = command.Description.Length > 0 ? command.Description : null;
+            menu.Items.Add(item);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -624,6 +659,7 @@ public sealed class ManuscriptEditor : TextEditor {
         if (ai.Items.Count > 0) {
             menu.Items.Add(ai);
         }
+        AddExtensionCommands(menu, offset);
         menu.Items.Add(new Separator());
 
         if (includeClipboard) {

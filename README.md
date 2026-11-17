@@ -198,12 +198,30 @@ public sealed class MyExtension : IWritingIdePlugin {
         host.RegisterRule(new MyGrammarRule());              // runs on every chapter, findings in the Error List
         host.RegisterExporter(new MyExporter());             // appears in File > Export
         host.RegisterCommand(new PluginCommand("Do Something", project => { /* IProjectApi */ }));  // Extensions menu
+        host.RegisterToolWindow(new PluginToolWindow("sprint", "Sprint Timer", () => new SprintPanel(host)));  // Extensions menu, opens as a tab
+        host.RegisterEditorCommand(new EditorCommand("Look Up Word", context => { /* context.Word, context.SelectedText */ }) {
+            IsAvailable = static context => context.Word.Length > 0  // the chapter's right-click menu
+        });
         host.ProjectOpened += (_, _) => host.Log($"Opened {host.Project.Name}");
+        host.ChapterTextChanged += (_, e) => { /* every edit to an open chapter: keep it quick */ };
     }
 }
 ```
 
-`IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements, comments, the Error List, and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command and a plain-text exporter. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
+What the host offers (SDK 1.1):
+
+| Member | Does |
+|---|---|
+| `RegisterRule`, `RegisterExporter`, `RegisterCommand` | A grammar rule, an export format, a command in the Extensions menu |
+| `RegisterToolWindow`, `ShowToolWindow` | A tool window of your own. It is listed in the Extensions menu, opens as a tab and can go in the second pane. `CreateContent` returns a WPF element, so the extension targets `net10.0-windows` with `<UseWPF>true</UseWPF>`. Use `SetResourceReference` with WritingIDE's brush keys (such as `TextBrush`, see `Themes/Light.xaml`) to follow the theme |
+| `RegisterEditorCommand` | A command in the chapter editor's right-click menu. It receives an `EditorContext`: the chapter, the clicked offset, the selection, the word and the story element under the cursor. `IsAvailable` decides where it is listed |
+| `Editor` (`IEditorApi`) | The active chapter, caret and selection; `ReplaceSelection` (undoable) and `Select` (opens a chapter and reveals a range) |
+| `Storage` (`IPluginStorage`) | `GetSetting`/`SetSetting`: per-user settings, kept with a `DataDirectory` for your own files in `%LocalAppData%\WritingIDE\ExtensionData\<id>`. `GetProjectValue`/`SetProjectValue`: values saved in the `.novproj`, so they travel with the project |
+| `ProjectOpened`, `ProjectClosed`, `ProjectSaved` | Project events |
+| `ActiveChapterChanged`, `ChapterTextChanged`, `SelectionChanged` | Editor events, raised on the UI thread. The last two fire on every keystroke or caret move, so do the real work on a timer |
+| `Log`, `Notify`, `SetStatusText` | The Output window, a notification, the status bar |
+
+`IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements (summary, notes and attributes), comments, the Error List, and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command, a plain-text exporter, a "Writing Session" tool window that counts the words you write against a goal, and a right-click command that counts the words in the selection. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
 
 ### Local REST API
 

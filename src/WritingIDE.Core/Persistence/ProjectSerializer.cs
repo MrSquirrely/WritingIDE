@@ -102,6 +102,9 @@ public static class ProjectSerializer {
         foreach (string rule in dto.DisabledRules) {
             project.DisabledRules.Add(rule);
         }
+        foreach ((string extension, Dictionary<string, string> values) in dto.ExtensionData ?? []) {
+            project.ExtensionData[extension] = new Dictionary<string, string>(values);
+        }
         foreach (PlotThreadDto thread in dto.PlotThreads ?? []) {
             project.PlotThreads.Add(new PlotThread(thread.Name) { Id = thread.Id, Description = thread.Description, Status = thread.Status });
         }
@@ -196,6 +199,9 @@ public static class ProjectSerializer {
             }).ToList(),
             Dictionary = project.CustomDictionary.ToList(),
             DisabledRules = project.DisabledRules.ToList(),
+            ExtensionData = project.ExtensionData.Any(static pair => pair.Value.Count > 0)
+                ? project.ExtensionData.Where(static pair => pair.Value.Count > 0).ToDictionary(static pair => pair.Key, static pair => new Dictionary<string, string>(pair.Value))
+                : null,
             PlotThreads = project.PlotThreads.Count == 0 ? null : project.PlotThreads.Select(static thread => new PlotThreadDto {
                 Id = thread.Id,
                 Name = thread.Name,
@@ -303,6 +309,9 @@ public static class ProjectSerializer {
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<PlotThreadDto>? PlotThreads { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, Dictionary<string, string>>? ExtensionData { get; set; }
     }
 
     internal sealed class BookDto {

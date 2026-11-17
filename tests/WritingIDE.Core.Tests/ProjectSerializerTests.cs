@@ -25,6 +25,20 @@ public sealed class ProjectSerializerTests : IDisposable {
     }
 
     [Fact]
+    public void ExtensionDataRoundTripsAndIsLeftOutWhenEmpty() {
+        NovelProject project = ProjectSerializer.Create(_directory, "Plain", "", ProjectTemplate.All[0]);
+        Assert.DoesNotContain("ExtensionData", File.ReadAllText(project.FilePath), StringComparison.OrdinalIgnoreCase);
+
+        project.ExtensionData["com.example.sprint"] = new Dictionary<string, string> { ["goal"] = "500" };
+        project.ExtensionData["com.example.empty"] = [];
+        ProjectSerializer.Save(project);
+        NovelProject loaded = ProjectSerializer.Load(project.FilePath);
+
+        Assert.Equal("500", loaded.ExtensionData["COM.EXAMPLE.SPRINT"]["goal"]);
+        Assert.False(loaded.ExtensionData.ContainsKey("com.example.empty"));
+    }
+
+    [Fact]
     public void SampleChapterProducesDiagnosticsFromSeveralRules() {
         NovelProject project = ProjectTemplate.All.Single(template => template.Title == "Sample Novel").Create("Sample", "");
         GrammarOptions options = new(new Analysis.EntityIndex(project.Entities), new HashSet<string>(), new HashSet<string>());

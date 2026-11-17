@@ -1,9 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- A sample WritingIDE extension. Build it, then copy bin\<Configuration>\net10.0\SampleExtension.dll into
+  <!-- A sample WritingIDE extension. Build it, then copy bin\<Configuration>\net10.0-windows\SampleExtension.dll into
        %LocalAppData%\WritingIDE\Extensions\SampleExtension\ and restart WritingIDE. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- net10.0-windows and UseWPF because the extension has a tool window. One with only rules, exporters and
+         commands can target plain net10.0. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

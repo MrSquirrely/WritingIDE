@@ -62,25 +62,35 @@ public partial class MainWindow : HandyControl.Controls.Window {
         }
     }
 
-    /// <summary>The Extensions menu lists the commands extensions registered.</summary>
+    /// <summary>The Extensions menu lists the tool windows and commands extensions registered.</summary>
     private void OnExtensionsMenuOpened(object sender, RoutedEventArgs e) {
         if (!ReferenceEquals(e.OriginalSource, ExtensionsMenu)) {
             return;
         }
         ExtensionsMenu.Items.Clear();
+        foreach ((ExtensionInfo extension, WritingIDE.Sdk.PluginToolWindow window) in _viewModel.Extensions.ToolWindows) {
+            MenuItem item = new() {
+                Header = new TextBlock { Text = window.Title },
+                Icon = new TextBlock { Text = Infrastructure.Visuals.PluginGlyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), Foreground = Infrastructure.Visuals.IconBrush, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center },
+                ToolTip = window.Description.Length > 0 ? window.Description : null,
+                IsEnabled = _viewModel.HasProject
+            };
+            item.Click += (_, _) => _viewModel.OpenPluginToolWindow(extension, window);
+            ExtensionsMenu.Items.Add(item);
+        }
+        if (ExtensionsMenu.Items.Count > 0) {
+            ExtensionsMenu.Items.Add(new Separator());
+        }
+        int toolWindowItems = ExtensionsMenu.Items.Count;
         foreach (WritingIDE.Sdk.PluginCommand command in _viewModel.Extensions.Commands) {
             WritingIDE.Sdk.PluginCommand captured = command;
             MenuItem item = new() { Header = new TextBlock { Text = command.Title }, ToolTip = command.Description.Length > 0 ? command.Description : null, IsEnabled = _viewModel.HasProject };
-            item.Click += (_, _) => {
-                try {
-                    captured.Execute(_viewModel.Extensions.ProjectApi);
-                }
-                catch (Exception exception) {
-                    _viewModel.Log($"warning: extension command '{captured.Title}' failed: {exception.Message}");
-                    MainViewModel.Notify($"'{captured.Title}' failed: {exception.Message}", MainViewModel.NotificationKind.Error);
-                }
-            };
+            item.Click += (_, _) => _viewModel.Extensions.Run(captured.Title, () => captured.Execute(_viewModel.Extensions.ProjectApi));
             ExtensionsMenu.Items.Add(item);
+        }
+        if ((toolWindowItems > 0) && (ExtensionsMenu.Items.Count == toolWindowItems)) {
+            // Tool windows but no commands: no separator is needed below them.
+            ExtensionsMenu.Items.RemoveAt(toolWindowItems - 1);
         }
         if (ExtensionsMenu.Items.Count == 0) {
             ExtensionsMenu.Items.Add(new MenuItem { Header = "(no extension commands)", IsEnabled = false });

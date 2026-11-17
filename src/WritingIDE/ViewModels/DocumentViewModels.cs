@@ -109,7 +109,10 @@ public sealed partial class ChapterDocumentViewModel : DocumentViewModel {
                 Shell.OnDocumentDirtyChanged();
             }
         };
-        Document.TextChanged += (_, _) => ScheduleAnalysis();
+        Document.TextChanged += (_, _) => {
+            ScheduleAnalysis();
+            Shell.Extensions?.RaiseChapterTextChanged(Chapter.Id);
+        };
         chapter.PropertyChanged += (_, e) => {
             if (e.PropertyName == nameof(Chapter.Title)) {
                 OnPropertyChanged(nameof(Title));

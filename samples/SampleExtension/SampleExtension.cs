@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -6,7 +7,7 @@ using WritingIDE.Sdk;
 
 namespace SampleExtension;
 
-/// <summary>A sample extension: one grammar rule, one command and one export format.</summary>
+/// <summary>A sample extension: a grammar rule, a menu command, an export format, a tool window and an editor command.</summary>
 public sealed class SampleExtension : IWritingIdePlugin {
     public string Id => "com.example.writingide.sample";
 
@@ -14,7 +15,7 @@ public sealed class SampleExtension : IWritingIdePlugin {
 
     public string Version => "1.0.0";
 
-    public string Description => "Flags 'very', counts words per chapter, and exports plain text.";
+    public string Description => "Flags 'very', counts words per chapter and per session, and exports plain text.";
 
     public void Initialize(IPluginHost host) {
         host.RegisterRule(new VeryRule());
@@ -25,6 +26,17 @@ public sealed class SampleExtension : IWritingIdePlugin {
             host.Notify("Word counts written to the Output window.");
         }) { Description = "Lists every chapter's word count in the Output window." });
         host.RegisterExporter(new PlainTextExporter());
+        // A tool window: listed in the Extensions menu, opens as a tab. The tracker counts whether or not it is open.
+        SessionTracker tracker = new(host);
+        host.RegisterToolWindow(new PluginToolWindow("session", "Writing Session", () => new SessionPanel(host, tracker)) {
+            Description = "Words written this session, against a goal."
+        });
+        // A right-click command in the chapter editor, offered only when text is selected.
+        host.RegisterEditorCommand(new EditorCommand("Count Words in Selection", context =>
+            host.Notify($"{SessionTracker.Words().Count(context.SelectedText):N0} words selected.")) {
+            Description = "Counts the words in the selected text.",
+            IsAvailable = static context => context.SelectionLength > 0
+        });
         host.ProjectOpened += (_, _) => host.Log($"Sample Extension: '{host.Project.Name}' opened with {host.Project.GetChapters().Count} chapters.");
     }
 }

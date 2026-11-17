@@ -33,6 +33,10 @@ public sealed class ExtensionInfo(string folder, string assemblyPath) {
     public List<IManuscriptExporter> Exporters { get; } = [];
 
     public List<PluginCommand> Commands { get; } = [];
+
+    public List<PluginToolWindow> ToolWindows { get; } = [];
+
+    public List<EditorCommand> EditorCommands { get; } = [];
 }
 
 /// <summary>
@@ -41,7 +45,7 @@ public sealed class ExtensionInfo(string folder, string assemblyPath) {
 /// Extensions run with the same rights as WritingIDE: install only ones you trust.
 /// </summary>
 public sealed class ExtensionManager(MainViewModel shell) {
-    public static readonly Version SdkVersion = new(1, 0, 0);
+    public static readonly Version SdkVersion = new(1, 1, 0);
 
     public static string Root { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WritingIDE", "Extensions");
 
@@ -55,11 +59,71 @@ public sealed class ExtensionManager(MainViewModel shell) {
 
     public IEnumerable<PluginCommand> Commands => Installed.Where(static extension => extension.IsEnabled).SelectMany(static extension => extension.Commands);
 
+    public IEnumerable<(ExtensionInfo Extension, PluginToolWindow Window)> ToolWindows => Installed.Where(static extension => extension.IsEnabled)
+        .SelectMany(static extension => extension.ToolWindows.Select(window => (extension, window)));
+
+    public IEnumerable<EditorCommand> EditorCommands => Installed.Where(static extension => extension.IsEnabled).SelectMany(static extension => extension.EditorCommands);
+
+    public EditorApi EditorApi { get; } = new(shell);
+
+    private MainViewModel Shell => shell;
+
+    private Guid? _activeChapterId;
+
     public event EventHandler? ProjectOpened;
 
     public event EventHandler? ProjectClosed;
 
     public event EventHandler? ProjectSaved;
+
+    public event EventHandler<ChapterEventArgs>? ActiveChapterChanged;
+
+    public event EventHandler<ChapterEventArgs>? ChapterTextChanged;
+
+    public event EventHandler<EditorSelectionEventArgs>? SelectionChanged;
+
+    /// <summary>Called whenever the active tab changes; extensions only hear about it when the chapter is a different one.</summary>
+    public void RaiseActiveChapterChanged(Guid? chapterId) {
+        if (chapterId == _activeChapterId) {
+            return;
+        }
+        _activeChapterId = chapterId;
+        Raise(ActiveChapterChanged, new ChapterEventArgs(chapterId));
+    }
+
+    public void RaiseChapterTextChanged(Guid chapterId) {
+        if (ChapterTextChanged is not null) {
+            Raise(ChapterTextChanged, new ChapterEventArgs(chapterId));
+        }
+    }
+
+    public void RaiseSelectionChanged(Guid chapterId, int caretOffset, int selectionStart, int selectionLength) {
+        if (SelectionChanged is not null) {
+            Raise(SelectionChanged, new EditorSelectionEventArgs(chapterId, caretOffset, selectionStart, selectionLength));
+        }
+    }
+
+    /// <summary>Whether an editor command wants to be listed here. A command whose check fails is left out.</summary>
+    public bool IsAvailable(EditorCommand command, EditorContext context) {
+        try {
+            return command.IsAvailable?.Invoke(context) ?? true;
+        }
+        catch (Exception exception) {
+            shell.Log($"warning: extension command '{command.Title}' failed: {exception.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Runs an extension's command; a failure is reported, not thrown.</summary>
+    public void Run(string title, Action action) {
+        try {
+            action();
+        }
+        catch (Exception exception) {
+            shell.Log($"warning: extension command '{title}' failed: {exception.Message}");
+            MainViewModel.Notify($"'{title}' failed: {exception.Message}", MainViewModel.NotificationKind.Error);
+        }
+    }
 
     public void RaiseProjectOpened() {
         Raise(ProjectOpened);
@@ -115,7 +179,7 @@ public sealed class ExtensionManager(MainViewModel shell) {
                         continue;
                     }
                     extension.Plugin.Initialize(new Host(this, extension));
-                    extension.Status = $"Loaded: {extension.Rules.Count} rule(s), {extension.Exporters.Count} exporter(s), {extension.Commands.Count} command(s)";
+                    extension.Status = $"Loaded: {extension.Rules.Count} rule(s), {extension.Exporters.Count} exporter(s), {extension.Commands.Count + extension.EditorCommands.Count} command(s), {extension.ToolWindows.Count} tool window(s)";
                     shell.Log($"Extension '{extension.Name}' {extension.Version} loaded from {folder}.");
                 }
                 catch (Exception exception) {
@@ -172,10 +236,28 @@ public sealed class ExtensionManager(MainViewModel shell) {
         }
     }
 
+    private void Raise<T>(EventHandler<T>? handler, T e) {
+        if (handler is null) {
+            return;
+        }
+        foreach (EventHandler<T> callback in handler.GetInvocationList().Cast<EventHandler<T>>()) {
+            try {
+                callback(this, e);
+            }
+            catch (Exception exception) {
+                shell.Log($"warning: an extension's event handler failed: {exception.Message}");
+            }
+        }
+    }
+
     private sealed class Host(ExtensionManager manager, ExtensionInfo extension) : IPluginHost {
         public Version SdkVersion => ExtensionManager.SdkVersion;
 
         public IProjectApi Project => manager.ProjectApi;
+
+        public IEditorApi Editor => manager.EditorApi;
+
+        public IPluginStorage Storage => field ??= new PluginStorage(manager.Shell, extension.Id);
 
         public void RegisterRule(GrammarRule rule) {
             extension.Rules.Add(new ExtensionRule(rule));
@@ -189,8 +271,30 @@ public sealed class ExtensionManager(MainViewModel shell) {
             extension.Commands.Add(command);
         }
 
+        public void RegisterToolWindow(PluginToolWindow window) {
+            ArgumentException.ThrowIfNullOrEmpty(window.Id);
+            if (extension.ToolWindows.Any(existing => string.Equals(existing.Id, window.Id, StringComparison.OrdinalIgnoreCase))) {
+                throw new ArgumentException($"A tool window with the id '{window.Id}' is already registered.");
+            }
+            extension.ToolWindows.Add(window);
+        }
+
+        public void ShowToolWindow(string id) {
+            PluginToolWindow window = extension.ToolWindows.FirstOrDefault(window => string.Equals(window.Id, id, StringComparison.OrdinalIgnoreCase))
+                ?? throw new ArgumentException($"No tool window with the id '{id}' is registered.");
+            Application.Current.Dispatcher.BeginInvoke(() => manager.Shell.OpenPluginToolWindow(extension, window));
+        }
+
+        public void RegisterEditorCommand(EditorCommand command) {
+            extension.EditorCommands.Add(command);
+        }
+
+        public void SetStatusText(string text) {
+            Application.Current.Dispatcher.BeginInvoke(() => manager.Shell.StatusText = text);
+        }
+
         public void Log(string message) {
-            Application.Current.Dispatcher.BeginInvoke(() => manager.ShellLog($"[{extension.Name}] {message}"));
+            Application.Current.Dispatcher.BeginInvoke(() => manager.Shell.Log($"[{extension.Name}] {message}"));
         }
 
         public void Notify(string message) {
@@ -211,10 +315,21 @@ public sealed class ExtensionManager(MainViewModel shell) {
             add => manager.ProjectSaved += value;
             remove => manager.ProjectSaved -= value;
         }
-    }
 
-    private void ShellLog(string message) {
-        shell.Log(message);
+        public event EventHandler<ChapterEventArgs>? ActiveChapterChanged {
+            add => manager.ActiveChapterChanged += value;
+            remove => manager.ActiveChapterChanged -= value;
+        }
+
+        public event EventHandler<ChapterEventArgs>? ChapterTextChanged {
+            add => manager.ChapterTextChanged += value;
+            remove => manager.ChapterTextChanged -= value;
+        }
+
+        public event EventHandler<EditorSelectionEventArgs>? SelectionChanged {
+            add => manager.SelectionChanged += value;
+            remove => manager.SelectionChanged -= value;
+        }
     }
 
     /// <summary>Wraps an extension's rule so the Error List and Options show it as a plugin rule.</summary>

@@ -63,6 +63,68 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
         });
     }
 
+    public void UpdateChapter(Guid chapterId, string? title = null, string? synopsis = null, string? pointOfView = null, string? storyDate = null) {
+        OnUi(() => {
+            Chapter chapter = FindChapter(chapterId);
+            if (title is not null) {
+                chapter.Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("A chapter needs a title.") : title.Trim();
+            }
+            chapter.Synopsis = synopsis ?? chapter.Synopsis;
+            chapter.PointOfView = pointOfView ?? chapter.PointOfView;
+            chapter.StoryDate = storyDate ?? chapter.StoryDate;
+            shell.Project!.MarkDirty();
+            return 0;
+        });
+    }
+
+    public string GetEntityNotes(Guid entityId) {
+        return OnUi(() => FindEntity(entityId).Notes);
+    }
+
+    public void UpdateEntity(Guid entityId, string? summary = null, string? notes = null) {
+        OnUi(() => {
+            StoryEntity entity = FindEntity(entityId);
+            entity.Summary = summary ?? entity.Summary;
+            entity.Notes = notes ?? entity.Notes;
+            shell.Project!.MarkDirty();
+            return 0;
+        });
+    }
+
+    public void SetEntityAttribute(Guid entityId, string key, string? value) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        OnUi(() => {
+            StoryEntity entity = FindEntity(entityId);
+            List<EntityAttribute> existing = entity.Attributes.Where(attribute => attribute.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (value is null) {
+                foreach (EntityAttribute attribute in existing) {
+                    entity.Attributes.Remove(attribute);
+                }
+            }
+            else if (existing.Count > 0) {
+                existing[0].Value = value;
+            }
+            else {
+                entity.Attributes.Add(new EntityAttribute(key, value));
+            }
+            shell.Project!.MarkDirty();
+            return 0;
+        });
+    }
+
+    public bool RemoveComment(Guid chapterId, Guid commentId) {
+        return OnUi(() => {
+            Chapter chapter = FindChapter(chapterId);
+            ChapterComment? comment = chapter.Comments.FirstOrDefault(comment => comment.Id == commentId);
+            if (comment is null) {
+                return false;
+            }
+            chapter.Comments.Remove(comment);
+            shell.Project!.MarkDirty();
+            return true;
+        });
+    }
+
     public IReadOnlyList<EntityInfo> GetEntities() {
         return OnUi(() => (IReadOnlyList<EntityInfo>)(shell.Project?.Entities.Select(static entity => new EntityInfo(entity.Id, entity.Kind, entity.Name, entity.AliasList, entity.Summary,
             entity.Attributes.Where(static attribute => attribute.Key.Length > 0).GroupBy(static attribute => attribute.Key).ToDictionary(static group => group.Key, static group => group.First().Value))).ToList() ?? []));
@@ -125,7 +187,11 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
         return RequireProject().Chapters.FirstOrDefault(chapter => chapter.Id == chapterId) ?? throw new KeyNotFoundException($"No chapter with id {chapterId}.");
     }
 
-    private static T OnUi<T>(Func<T> action) {
+    private StoryEntity FindEntity(Guid entityId) {
+        return RequireProject().FindEntity(entityId) ?? throw new KeyNotFoundException($"No story element with id {entityId}.");
+    }
+
+    internal static T OnUi<T>(Func<T> action) {
         return Application.Current.Dispatcher.CheckAccess() ? action() : Application.Current.Dispatcher.Invoke(action);
     }
 }

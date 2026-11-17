@@ -600,6 +600,7 @@ public sealed partial class MainViewModel : ObservableObject {
             if (SetProperty(ref field, value)) {
                 OnPropertyChanged(nameof(ActiveChapter));
                 value?.OnActivated();
+                Extensions?.RaiseActiveChapterChanged((value as ChapterDocumentViewModel)?.Chapter.Id);
                 if (CurrentDocumentOnly) {
                     RefreshErrorList();
                 }

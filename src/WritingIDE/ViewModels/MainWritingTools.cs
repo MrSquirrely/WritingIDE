@@ -248,6 +248,20 @@ public sealed partial class MainViewModel {
 
     public string SecondaryTitle => SecondaryDocument is null ? "" : SecondaryDocument.Title;
 
+    /// <summary>Opens an extension's tool window as a tab, or brings it forward when it is already open.</summary>
+    public void OpenPluginToolWindow(ExtensionInfo extension, Sdk.PluginToolWindow window) {
+        if (Project is null) {
+            StatusText = $"Open a project to use '{window.Title}'.";
+            return;
+        }
+        PluginToolDocumentViewModel? document = Documents.OfType<PluginToolDocumentViewModel>().FirstOrDefault(document => document.Window == window);
+        if (document is null) {
+            document = new PluginToolDocumentViewModel(this, extension, window);
+            Documents.Add(document);
+        }
+        ActiveDocument = document;
+    }
+
     /// <summary>Window > Split: shows a document in a second pane beside the document well (a chapter gets a second editor on the same text).</summary>
     public void OpenInSplitPane(DocumentViewModel? document) {
         if (document is null) {

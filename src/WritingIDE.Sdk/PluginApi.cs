@@ -18,7 +18,7 @@ public interface IWritingIdePlugin {
 
     string Description { get; }
 
-    /// <summary>Register rules, exporters and commands, and subscribe to events.</summary>
+    /// <summary>Register rules, exporters, commands and tool windows, and subscribe to events.</summary>
     void Initialize(IPluginHost host);
 }
 
@@ -30,6 +30,12 @@ public interface IPluginHost {
     /// <summary>The open project (check <see cref="IProjectApi.IsOpen"/>).</summary>
     IProjectApi Project { get; }
 
+    /// <summary>The chapter editor: the selection, the caret, and edits at the caret.</summary>
+    IEditorApi Editor { get; }
+
+    /// <summary>This extension's own settings and files, per user and per project.</summary>
+    IPluginStorage Storage { get; }
+
     /// <summary>Adds a grammar rule: it runs on every chapter like a built-in rule, and its findings go to the Error List.</summary>
     void RegisterRule(GrammarRule rule);
 
@@ -38,6 +44,21 @@ public interface IPluginHost {
 
     /// <summary>Adds a command to the Extensions menu.</summary>
     void RegisterCommand(PluginCommand command);
+
+    /// <summary>
+    /// Adds a tool window. It is listed in the Extensions menu and opens as a tab in the document well; the writer
+    /// can also move it to the second pane.
+    /// </summary>
+    void RegisterToolWindow(PluginToolWindow window);
+
+    /// <summary>Opens (or brings forward) a tool window this extension registered. Needs an open project.</summary>
+    void ShowToolWindow(string id);
+
+    /// <summary>Adds a command to the chapter editor's right-click menu.</summary>
+    void RegisterEditorCommand(EditorCommand command);
+
+    /// <summary>Shows a message in the status bar.</summary>
+    void SetStatusText(string text);
 
     /// <summary>Writes a line to the Output window.</summary>
     void Log(string message);
@@ -50,6 +71,113 @@ public interface IPluginHost {
     event EventHandler? ProjectClosed;
 
     event EventHandler? ProjectSaved;
+
+    /// <summary>
+    /// The writer switched to another chapter, or to a tab that is not a chapter (<see cref="ChapterEventArgs.ChapterId"/>
+    /// is then null). Raised on the UI thread.
+    /// </summary>
+    event EventHandler<ChapterEventArgs>? ActiveChapterChanged;
+
+    /// <summary>
+    /// The text of an open chapter changed. Raised on the UI thread for every edit (each keystroke), so keep handlers
+    /// quick or start a timer.
+    /// </summary>
+    event EventHandler<ChapterEventArgs>? ChapterTextChanged;
+
+    /// <summary>The caret moved or the selection changed in a chapter editor. Raised on the UI thread; keep handlers quick.</summary>
+    event EventHandler<EditorSelectionEventArgs>? SelectionChanged;
+}
+
+/// <summary>Names a chapter in an event (null when no chapter is active).</summary>
+public sealed class ChapterEventArgs(Guid? chapterId) : EventArgs {
+    public Guid? ChapterId { get; } = chapterId;
+}
+
+/// <summary>The caret and selection after they changed.</summary>
+public sealed class EditorSelectionEventArgs(Guid chapterId, int caretOffset, int selectionStart, int selectionLength) : EventArgs {
+    public Guid ChapterId { get; } = chapterId;
+
+    public int CaretOffset { get; } = caretOffset;
+
+    public int SelectionStart { get; } = selectionStart;
+
+    public int SelectionLength { get; } = selectionLength;
+}
+
+/// <summary>
+/// A tool window contributed by an extension. <paramref name="CreateContent"/> is called on the UI thread, once each
+/// time the window is opened, and returns a WPF element (a UserControl, say). An extension with tool windows targets
+/// net10.0-windows with UseWPF. The SDK itself does not depend on WPF, which is why the type is object.
+/// </summary>
+/// <param name="Id">Unique within the extension, such as "sprint".</param>
+/// <param name="Title">The tab's title and the menu entry.</param>
+/// <param name="CreateContent">Creates the window's content.</param>
+public sealed record PluginToolWindow(string Id, string Title, Func<object> CreateContent) {
+    public string Description { get; init; } = "";
+
+    /// <summary>Called on the UI thread when the tab is closed (also when the project closes).</summary>
+    public Action? Closed { get; init; }
+}
+
+/// <summary>Where the writer right-clicked in a chapter, and what is selected.</summary>
+/// <param name="ChapterId">The chapter in the editor.</param>
+/// <param name="Offset">The clicked position (the caret, when the menu was opened from the keyboard).</param>
+/// <param name="SelectionStart">Where the selection starts.</param>
+/// <param name="SelectionLength">0 when nothing is selected.</param>
+/// <param name="SelectedText">The selected text, or "".</param>
+/// <param name="Word">The word at <paramref name="Offset"/>, or "".</param>
+/// <param name="EntityId">The story element whose name is at <paramref name="Offset"/>, if any.</param>
+public sealed record EditorContext(Guid ChapterId, int Offset, int SelectionStart, int SelectionLength, string SelectedText, string Word, Guid? EntityId);
+
+/// <summary>A command in the chapter editor's right-click menu.</summary>
+public sealed record EditorCommand(string Title, Action<EditorContext> Execute) {
+    public string Description { get; init; } = "";
+
+    /// <summary>When set, the command is only listed where this returns true (for example, only with a selection).</summary>
+    public Func<EditorContext, bool>? IsAvailable { get; init; }
+}
+
+/// <summary>
+/// The chapter editor that is in front. Safe to call from any thread. Offsets count characters from the start of the
+/// chapter's text.
+/// </summary>
+public interface IEditorApi {
+    /// <summary>The chapter in the active tab, or null when the active tab is not a chapter.</summary>
+    Guid? ActiveChapterId { get; }
+
+    int CaretOffset { get; }
+
+    int SelectionStart { get; }
+
+    int SelectionLength { get; }
+
+    string SelectedText { get; }
+
+    /// <summary>
+    /// Replaces the selection (or inserts at the caret when nothing is selected). The writer can undo it.
+    /// False when no chapter is active.
+    /// </summary>
+    bool ReplaceSelection(string text);
+
+    /// <summary>Opens the chapter, selects the range and scrolls it into view.</summary>
+    void Select(Guid chapterId, int offset, int length);
+}
+
+/// <summary>An extension's own data. Keys are the extension's to choose; setting a value to null removes it.</summary>
+public interface IPluginStorage {
+    /// <summary>A per-user folder for this extension's files (created when first read).</summary>
+    string DataDirectory { get; }
+
+    /// <summary>A per-user setting (kept in <see cref="DataDirectory"/>), or null.</summary>
+    string? GetSetting(string key);
+
+    void SetSetting(string key, string? value);
+
+    /// <summary>A value saved in the open project's file, so it travels with the project. Null when unset or no project is open.</summary>
+    string? GetProjectValue(string key);
+
+    /// <summary>Stores a value in the open project (written when the writer saves).</summary>
+    void SetProjectValue(string key, string? value);
 }
 
 /// <summary>A command shown in the Extensions menu.</summary>
@@ -103,13 +231,27 @@ public interface IProjectApi {
     /// <summary>Adds a chapter at the end of the manuscript (or of the book) and returns its id.</summary>
     Guid AddChapter(string title, string text, Guid? bookId = null);
 
+    /// <summary>Changes a chapter's details; arguments left null stay as they are.</summary>
+    void UpdateChapter(Guid chapterId, string? title = null, string? synopsis = null, string? pointOfView = null, string? storyDate = null);
+
     IReadOnlyList<EntityInfo> GetEntities();
 
     Guid AddEntity(EntityKind kind, string name, string summary = "");
 
+    string GetEntityNotes(Guid entityId);
+
+    /// <summary>Changes a story element's summary or notes; arguments left null stay as they are.</summary>
+    void UpdateEntity(Guid entityId, string? summary = null, string? notes = null);
+
+    /// <summary>Sets an attribute such as "Age" (added when missing); null removes it.</summary>
+    void SetEntityAttribute(Guid entityId, string key, string? value);
+
     IReadOnlyList<CommentInfo> GetComments(Guid chapterId);
 
     Guid AddComment(Guid chapterId, int offset, int length, string text);
+
+    /// <summary>Deletes a comment, bookmark or plot-thread marker. False when the chapter has none with that id.</summary>
+    bool RemoveComment(Guid chapterId, Guid commentId);
 
     /// <summary>The current Error List (every chapter).</summary>
     IReadOnlyList<DiagnosticInfo> GetDiagnostics();
