@@ -1,0 +1,59 @@
+name: Plugin index
+
+# Rebuilds plugins.json on the plugin-index branch whenever a discussion changes. WritingIDE's plugin list
+# (Tools > Extensions and API > Plugin list) reads that file. See .github/scripts/build-plugin-index.js for the rules.
+
+on:
+  discussion:
+    types: [created, edited, deleted, labeled, unlabeled, category_changed]
+  discussion_comment:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
+
+permissions:
+  contents: write
+  discussions: read
+
+concurrency:
+  group: plugin-index
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # The script comes from the default branch, never from a pull request or a discussion.
+      - uses: actions/checkout@v4
+
+      - name: Build plugins.json from the discussions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/build-plugin-index.js > "$RUNNER_TEMP/plugins.json"
+
+      - name: Publish to the plugin-index branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir "$RUNNER_TEMP/index" && cd "$RUNNER_TEMP/index"
+          git init -q -b plugin-index
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Keep the branch's history when it exists already.
+          if git fetch -q --depth 1 origin plugin-index; then
+            git reset -q --soft FETCH_HEAD
+          fi
+          cp "$RUNNER_TEMP/plugins.json" plugins.json
+          printf '%s\n' \
+            '# WritingIDE plugin index' '' \
+            'This branch is written by the "Plugin index" workflow. `plugins.json` lists the plugins that are' \
+            'shared in this repository'"'"'s discussions and approved; WritingIDE reads it for its plugin list.' \
+            'Do not edit it by hand: change the discussion instead.' > README.md
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The index is unchanged."
+          else
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Update the plugin index"
+            git push -q origin plugin-index
+            echo "The index was updated."
+          fi

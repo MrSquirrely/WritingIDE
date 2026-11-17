@@ -238,9 +238,28 @@ What the host offers (SDK 1.2):
 
 `IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements (summary, notes, attributes and relationships), comments, the Error List, `OpenEntity`, `Reanalyze` (check the open chapters again after a rule's settings change), the genre, the writing statistics (`GetWritingStats`: total and today's words, goal and streaks), and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command, a plain-text exporter, a "Writing Session" tool window that counts the words you write against a goal, and a right-click command that counts the words in the selection. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
 
-### Plugins in their own repository
+### The plugin list
 
-[WritingIDE-Plugins](https://github.com/MrSquirrely/WritingIDE-Plugins) holds four extensions built on this SDK that go beyond what the main program does itself: **Ambient Soundscapes** (looping background sound that follows the place a chapter is set in), **Map Maker** (a map with a pin for each place, travel times, and a continuity rule for journeys that do not fit the map), **Gamification** (experience, levels and achievements) and **Genre Rule Packs** (rules and manuscript checks for romance, mystery, fantasy, science fiction and thrillers). Check it out next to this repository and run its `build\install.ps1`.
+**Tools > Extensions and API > Plugin list** shows the plugins people have shared, with Install, Update and Remove. Installing downloads the plugin, checks it against the checksum in the list, and puts it in place the next time WritingIDE starts (extensions are loaded at start-up).
+
+The list lives in this repository's [GitHub Discussions](https://github.com/MrSquirrely/WritingIDE/discussions): each plugin is a discussion, so it has a page where people can read about it and ask questions. To list a plugin, start a discussion with a `plugin` block:
+
+````
+```plugin
+id: com.example.myplugin
+name: My Plugin
+description: What it does, in a sentence or two.
+version: 1.0.0
+sdk: 1.2
+download: https://github.com/you/your-plugin/releases/download/v1.0.0/MyPlugin-1.0.0.zip
+sha256: <the zip's SHA-256>
+homepage: https://github.com/you/your-plugin
+```
+````
+
+`id` is the plugin's own `Id`; `download` is an https link to a zip of the plugin's DLLs. A maintainer then adds the `plugin` label and comments `approve <sha256>`. The approval covers that one file: changing the download or its checksum needs a new approval. The "Plugin index" workflow (`.github/workflows/plugin-index.yml`) turns the approved discussions into `plugins.json` on the `plugin-index` branch, which is what WritingIDE reads. The wiki has the full guide.
+
+The first four plugins are in [WritingIDE-Plugins](https://github.com/MrSquirrely/WritingIDE-Plugins): **Ambient Soundscapes** (looping background sound that follows the place a chapter is set in), **Map Maker** (a map with a pin for each place, travel times, and a continuity rule for journeys that do not fit the map), **Gamification** (experience, levels and achievements) and **Genre Rule Packs** (rules and manuscript checks for romance, mystery, fantasy, science fiction and thrillers).
 
 ### Local REST API
 
@@ -329,10 +348,18 @@ Invoke-RestMethod http://localhost:5719/api/chapters -Headers $h
 
 To add a rule, derive from `GrammarRule` (or `PatternRule` for phrase tables) and add it to `GrammarEngine.Rules`.
 
+## License
+
+WritingIDE is free software under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version. You may use, study, share and change it; if you distribute it or a changed version, you must do so under the same license and make the source available.
+
+Extensions are loaded into WritingIDE and build against its SDK, so an extension you distribute must be under a license compatible with the GPL (the GPL itself, or a permissive license such as MIT or Apache 2.0). Your novels are yours: the license covers the program, not what you write with it.
+
+WritingIDE uses AvalonEdit, HandyControls, DocumentFormat.OpenXml, PDFsharp and Velopack (all MIT), and can run Harper (Apache 2.0) as a separate program.
+
 ## Layout
 
 ```
-src/WritingIDE.Core     Model, persistence, import, grammar engine, analysis, exporters (DOCX, EPUB, PDF), AI clients and prompts (no UI dependencies)
+src/WritingIDE.Core     Model, persistence, import, grammar engine, analysis, exporters (DOCX, EPUB, PDF), AI clients and prompts, the plugin list and installer (no UI dependencies)
 src/WritingIDE.Sdk      The extension SDK: IWritingIdePlugin, IPluginHost, IProjectApi
 src/WritingIDE          WPF shell (HandyControls): AvalonEdit-based editor, IntelliSense, squiggles, tool windows, dialogs, Harper plugin (LSP client), extension loader, local REST API
 samples/                SampleExtension: a complete extension built on the SDK

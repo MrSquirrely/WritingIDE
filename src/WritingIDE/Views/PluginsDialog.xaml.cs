@@ -36,6 +36,7 @@ public partial class PluginsDialog : HandyControl.Controls.Window {
         _ready = true;
         UpdateStatus();
         InitializeExtensionsAndApi();
+        InitializeBrowse();
     }
 
     private void OnHarperPropertyChanged(object? sender, PropertyChangedEventArgs e) {

@@ -154,7 +154,12 @@ public sealed class ExtensionManager(MainViewModel shell) {
         if (!Directory.Exists(Root)) {
             return;
         }
-        foreach (string folder in Directory.EnumerateDirectories(Root)) {
+        // Installs, updates and removals from the plugin list wait for a start, when no extension file is open yet.
+        foreach (string line in Core.Plugins.PluginInstaller.ApplyPending(Root)) {
+            shell.Log(line);
+        }
+        // Folders that start with a dot are the installer's own (staged installs, removal markers).
+        foreach (string folder in Directory.EnumerateDirectories(Root).Where(static folder => !Path.GetFileName(folder).StartsWith('.'))) {
             foreach (string dll in Directory.EnumerateFiles(folder, "*.dll")) {
                 if (Path.GetFileName(dll).StartsWith("WritingIDE.", StringComparison.OrdinalIgnoreCase)) {
                     // A stray copy of the SDK or Core: WritingIDE's own is used.
