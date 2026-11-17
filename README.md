@@ -257,7 +257,7 @@ homepage: https://github.com/you/your-plugin
 ```
 ````
 
-`id` is the plugin's own `Id`; `download` is an https link to a zip of the plugin's DLLs. A maintainer then adds the `plugin` label and comments `approve <sha256>`. The approval covers that one file: changing the download or its checksum needs a new approval. The "Plugin index" workflow (`.github/workflows/plugin-index.yml`) turns the approved discussions into `plugins.json` on the `plugin-index` branch, which is what WritingIDE reads. The wiki has the full guide.
+`id` is the plugin's own `Id`; `download` is an https link to a zip of the plugin's DLLs; `homepage` links to its source. Only plugins whose source can be read (open source or source-available) are approved. A maintainer then adds the `plugin` label and comments `approve <sha256>`. The approval covers that one file: changing the download or its checksum needs a new approval. The "Plugin index" workflow (`.github/workflows/plugin-index.yml`) turns the approved discussions into `plugins.json` on the `plugin-index` branch, which is what WritingIDE reads. The wiki has the full guide.
 
 The first four plugins are in [WritingIDE-Plugins](https://github.com/MrSquirrely/WritingIDE-Plugins): **Ambient Soundscapes** (looping background sound that follows the place a chapter is set in), **Map Maker** (a map with a pin for each place, travel times, and a continuity rule for journeys that do not fit the map), **Gamification** (experience, levels and achievements) and **Genre Rule Packs** (rules and manuscript checks for romance, mystery, fantasy, science fiction and thrillers).
 
@@ -352,7 +352,9 @@ To add a rule, derive from `GrammarRule` (or `PatternRule` for phrase tables) an
 
 WritingIDE is free software under the [GNU General Public License, version 3](LICENSE) or (at your option) any later version. You may use, study, share and change it; if you distribute it or a changed version, you must do so under the same license and make the source available.
 
-Extensions are loaded into WritingIDE and build against its SDK, so an extension you distribute must be under a license compatible with the GPL (the GPL itself, or a permissive license such as MIT or Apache 2.0). Your novels are yours: the license covers the program, not what you write with it.
+**Plugins can use any license.** The SDK (`src/WritingIDE.Sdk`) is under the [MIT License](src/WritingIDE.Sdk/LICENSE), and the [plugin exception](PLUGIN-EXCEPTION.md) gives extra permission under the GPL: a plugin that uses WritingIDE only through its plugin interface may be released under terms of your choice, open or closed. Code copied out of WritingIDE itself stays under the GPL. The plugin list has a rule of its own: it only lists plugins whose source can be read (open source or source-available), so that a maintainer can check what they do.
+
+Your novels are yours: the license covers the program, not what you write with it.
 
 WritingIDE uses AvalonEdit, HandyControls, DocumentFormat.OpenXml, PDFsharp and Velopack (all MIT), and can run Harper (Apache 2.0) as a separate program.
 

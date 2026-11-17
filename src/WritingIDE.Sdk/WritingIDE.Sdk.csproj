@@ -7,7 +7,9 @@
     <RootNamespace>WritingIDE.Sdk</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <Description>The WritingIDE extension SDK: write grammar rules, exporters and commands for WritingIDE.</Description>
+    <Description>The WritingIDE extension SDK: write grammar rules, exporters, commands and windows for WritingIDE.</Description>
+    <!-- The SDK is MIT, unlike the rest of WritingIDE (GPL): see PLUGIN-EXCEPTION.md in the repository root. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
