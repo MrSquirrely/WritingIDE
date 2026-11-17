@@ -1,0 +1,53 @@
+{
+  "source": "https://github.com/MrSquirrely/WritingIDE/discussions",
+  "plugins": [
+    {
+      "id": "com.mrsquirrely.writingide.soundscapes",
+      "name": "Ambient Soundscapes",
+      "description": "Looping background sound (rain, wind, a fire, a tavern) that can follow the place a chapter is set in. The sounds are made on your PC; nothing is downloaded.",
+      "author": "MrSquirrely",
+      "version": "1.0.0",
+      "sdk": "1.2",
+      "download": "https://github.com/MrSquirrely/WritingIDE-Plugins/releases/download/v1.0.0/AmbientSoundscapes-1.0.0.zip",
+      "sha256": "41c6f89e2ac0b6e57f2c0cc67fff0aac7a6e9148335ae563355e1c3b43d47757",
+      "homepage": "https://github.com/MrSquirrely/WritingIDE-Plugins",
+      "discussion": "https://github.com/MrSquirrely/WritingIDE/discussions/2"
+    },
+    {
+      "id": "com.mrsquirrely.writingide.gamification",
+      "name": "Gamification",
+      "description": "Experience for every word you write, levels from Scribbler to Legend, and 30 achievements for word counts, streaks, sprints and worldbuilding.",
+      "author": "MrSquirrely",
+      "version": "1.0.0",
+      "sdk": "1.2",
+      "download": "https://github.com/MrSquirrely/WritingIDE-Plugins/releases/download/v1.0.0/Gamification-1.0.0.zip",
+      "sha256": "c7ecec0e63059657f654eab6da61361cbaae1093263d27848e5b40d02627d620",
+      "homepage": "https://github.com/MrSquirrely/WritingIDE-Plugins",
+      "discussion": "https://github.com/MrSquirrely/WritingIDE/discussions/4"
+    },
+    {
+      "id": "com.mrsquirrely.writingide.genrepacks",
+      "name": "Genre Rule Packs",
+      "description": "Rules and whole-manuscript checks for romance, mystery, fantasy, science fiction and thrillers. The packs follow your project's genre.",
+      "author": "MrSquirrely",
+      "version": "1.0.0",
+      "sdk": "1.2",
+      "download": "https://github.com/MrSquirrely/WritingIDE-Plugins/releases/download/v1.0.0/GenreRulePacks-1.0.0.zip",
+      "sha256": "87338b0dbf6d9ab34e6dabb276c7de2c67046f90003cf726f94c440e970735a5",
+      "homepage": "https://github.com/MrSquirrely/WritingIDE-Plugins",
+      "discussion": "https://github.com/MrSquirrely/WritingIDE/discussions/5"
+    },
+    {
+      "id": "com.mrsquirrely.writingide.mapmaker",
+      "name": "Map Maker",
+      "description": "A map of your world, imported or drawn, with a pin for each place. Shows distances and travel times, and rule MAP001 flags journeys in the text that do not fit the map.",
+      "author": "MrSquirrely",
+      "version": "1.0.0",
+      "sdk": "1.2",
+      "download": "https://github.com/MrSquirrely/WritingIDE-Plugins/releases/download/v1.0.0/MapMaker-1.0.0.zip",
+      "sha256": "5ec50f143966582f905d23f7cc92e17e33de44599a6f6446295e8cee920d333f",
+      "homepage": "https://github.com/MrSquirrely/WritingIDE-Plugins",
+      "discussion": "https://github.com/MrSquirrely/WritingIDE/discussions/3"
+    }
+  ]
+}
