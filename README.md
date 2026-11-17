@@ -10,7 +10,16 @@ A project is either a **novel** or a **series**. A series is like a solution wit
 
 **View > Theme** switches between Light, Dark and Use Windows Setting (the default, which also follows Windows when you change it). The choice is saved per user. The palettes live in `src/WritingIDE/Themes/Light.xaml` and `Dark.xaml`, and every colour in the UI comes from them.
 
-## Run
+## Install
+
+Download the latest version from the [releases page](https://github.com/MrSquirrely/WritingIDE/releases/latest):
+
+- **`WritingIDE.App-win-x64-Setup.exe`**: the installer for most PCs (`win-arm64` for Windows on ARM). It installs for your account only and needs no administrator rights.
+- **`WritingIDE.App-win-x64-Portable.zip`**: runs without installing. Unzip it and start `WritingIDE.exe`.
+
+The installed app keeps itself up to date. The guides are in the [wiki](https://github.com/MrSquirrely/WritingIDE/wiki).
+
+## Run from source
 
 ```bash
 dotnet run --project src/WritingIDE
@@ -35,7 +44,7 @@ dotnet test
 WritingIDE ships with [Velopack](https://velopack.io): a per-user installer (no administrator rights) with automatic updates.
 
 ```powershell
-.\build\release.ps1 -Version 1.0.0 -UpdateUrl https://github.com/<owner>/<releases-repo>
+.\build\release.ps1 -Version 1.0.1 -Publish -ReleaseNotes .\notes.md
 ```
 
 The script publishes a self-contained, ReadyToRun build for x64 and ARM64 (the publish profiles `FolderProfile` and `FolderProfileArm64`), then runs Velopack's `vpk` tool, pinned in `dotnet-tools.json`. It writes these files to `artifacts\releases`:
@@ -44,7 +53,7 @@ The script publishes a self-contained, ReadyToRun build for x64 and ARM64 (the p
 - `...-Portable.zip`: runs without installing.
 - `...-full.nupkg` plus `releases.*.json`, `assets.*.json` and `RELEASES-*`: the update packages and feeds.
 
-Upload all of them to the place `-UpdateUrl` names: the releases of a public GitHub repository (`dotnet vpk upload github ...`), or any HTTPS folder. The source repository can stay private.
+Installed copies look for updates in the releases of this repository (`-UpdateUrl`, by default `https://github.com/MrSquirrely/WritingIDE`). With `-Publish` the script creates the GitHub release `v<Version>` and uploads the files with the `gh` CLI; without it, upload them yourself. `-UpdateUrl` can also be any HTTPS folder that holds the files.
 
 - **The installer** puts WritingIDE in `%LocalAppData%\WritingIDE.App`, adds Start menu and desktop shortcuts, and registers `.novproj` files to open in WritingIDE. It needs no .NET install. The writer's own data stays in `%LocalAppData%\WritingIDE` and `%AppData%\WritingIDE` and survives uninstalling.
 - **Updates**: the installed app checks quietly at startup and downloads a new version in the background. It installs when WritingIDE closes; **Help > Restart to Update** installs it straight away, after the usual offer to save. **Help > Check for Updates** checks on demand. Builds without `-UpdateUrl`, and builds run from Visual Studio, never check.
