@@ -86,7 +86,35 @@ public interface IPluginHost {
 
     /// <summary>The caret moved or the selection changed in a chapter editor. Raised on the UI thread; keep handlers quick.</summary>
     event EventHandler<EditorSelectionEventArgs>? SelectionChanged;
+
+    /// <summary>A writing sprint ended (ran out, or was stopped early). Raised on the UI thread.</summary>
+    event EventHandler<SprintEventArgs>? SprintFinished;
+
+    /// <summary>Today's words reached the project's daily goal (once a day). Raised on the UI thread.</summary>
+    event EventHandler? DailyGoalReached;
 }
+
+/// <summary>How a writing sprint went.</summary>
+public sealed class SprintEventArgs(int words, double minutes, bool completed) : EventArgs {
+    /// <summary>Words added during the sprint, net of deletions.</summary>
+    public int Words { get; } = words;
+
+    /// <summary>How long the sprint ran.</summary>
+    public double Minutes { get; } = minutes;
+
+    /// <summary>False when the writer stopped it before the clock ran out.</summary>
+    public bool Completed { get; } = completed;
+}
+
+/// <summary>The writer's progress in the open project.</summary>
+/// <param name="TotalWords">The manuscript's length.</param>
+/// <param name="TargetWords">The length the writer is aiming for.</param>
+/// <param name="WordsToday">Words added today, net of deletions.</param>
+/// <param name="DailyGoal">Words to write each day; 0 when no goal is set.</param>
+/// <param name="Streak">Days in a row that met the goal (any words when there is no goal).</param>
+/// <param name="BestStreak">The longest such run in the writing log.</param>
+/// <param name="DaysWritten">Days in the writing log with words added.</param>
+public sealed record WritingStats(int TotalWords, int TargetWords, int WordsToday, int DailyGoal, int Streak, int BestStreak, int DaysWritten);
 
 /// <summary>Names a chapter in an event (null when no chapter is active).</summary>
 public sealed class ChapterEventArgs(Guid? chapterId) : EventArgs {
@@ -219,6 +247,12 @@ public interface IProjectApi {
 
     string Author { get; }
 
+    /// <summary>The genre the writer gave the project ("Fantasy", "Cozy mystery"), or "".</summary>
+    string Genre { get; }
+
+    /// <summary>Words written, today's words against the goal, and streaks.</summary>
+    WritingStats GetWritingStats();
+
     string DirectoryPath { get; }
 
     /// <summary>Chapters in reading order.</summary>
@@ -252,6 +286,18 @@ public interface IProjectApi {
 
     /// <summary>Deletes a comment, bookmark or plot-thread marker. False when the chapter has none with that id.</summary>
     bool RemoveComment(Guid chapterId, Guid commentId);
+
+    /// <summary>A story element's relationships: the other element's id and the label ("sister of").</summary>
+    IReadOnlyList<(Guid TargetId, string Label)> GetEntityRelationships(Guid entityId);
+
+    /// <summary>Opens a story element's page in the document well.</summary>
+    void OpenEntity(Guid entityId);
+
+    /// <summary>
+    /// Checks the open chapters again, so that a rule whose settings changed (a pack switched on, a map edited)
+    /// shows its new findings without the writer pressing F6.
+    /// </summary>
+    void Reanalyze();
 
     /// <summary>The current Error List (every chapter).</summary>
     IReadOnlyList<DiagnosticInfo> GetDiagnostics();

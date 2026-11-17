@@ -18,6 +18,25 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
 
     public string Author => OnUi(() => shell.Project?.Author ?? "");
 
+    public string Genre => OnUi(() => shell.Project?.Genre ?? "");
+
+    public WritingStats GetWritingStats() {
+        return OnUi(() => {
+            NovelProject? project = shell.Project;
+            if (project is null) {
+                return new WritingStats(0, 0, 0, 0, 0, 0, 0);
+            }
+            DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+            return new WritingStats(shell.TotalWords, project.TargetWordCount, WritingProgress.WrittenOn(project.WritingLog, today), project.DailyWordGoal,
+                WritingProgress.Streak(project.WritingLog, today, project.DailyWordGoal), WritingProgress.BestStreak(project.WritingLog, project.DailyWordGoal),
+                project.WritingLog.Count(static day => day.Written > 0));
+        });
+    }
+
+    public IReadOnlyList<(Guid TargetId, string Label)> GetEntityRelationships(Guid entityId) {
+        return OnUi(() => (IReadOnlyList<(Guid TargetId, string Label)>)FindEntity(entityId).Relationships.Select(static relationship => (relationship.TargetId, relationship.Label)).ToList());
+    }
+
     public string DirectoryPath => OnUi(() => shell.Project?.DirectoryPath ?? "");
 
     public IReadOnlyList<ChapterInfo> GetChapters() {
@@ -164,6 +183,22 @@ public sealed class ProjectApi(MainViewModel shell) : IProjectApi {
             };
             chapter.Comments.Add(comment);
             return comment.Id;
+        });
+    }
+
+    public void OpenEntity(Guid entityId) {
+        OnUi(() => {
+            shell.OpenEntity(FindEntity(entityId));
+            return 0;
+        });
+    }
+
+    public void Reanalyze() {
+        OnUi(() => {
+            if (shell.Project is not null) {
+                shell.ReanalyzeOpenDocuments();
+            }
+            return 0;
         });
     }
 

@@ -15,6 +15,7 @@
     <KeyBinding Key="S" Modifiers="Ctrl+Shift" Command="{Binding SaveAllCommand}" />
     <KeyBinding Key="A" Modifiers="Ctrl+Shift" Command="{Binding AddNewItemCommand}" />
     <KeyBinding Key="F6" Command="{Binding AnalyzeAllCommand}" />
+    <KeyBinding Key="F9" Command="{Binding ToggleSprintCommand}" />
     <KeyBinding Key="B" Modifiers="Ctrl+Shift" Command="{Binding AnalyzeAllCommand}" />
     <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding CloseDocumentCommand}" />
     <KeyBinding Key="I" Modifiers="Ctrl+Shift" Command="{Binding ImportCommand}" />
@@ -324,6 +325,13 @@
         <MenuItem Header="_Timeline" Command="{Binding OpenTimelineCommand}" />
         <MenuItem Header="_Relationship Map" Command="{Binding OpenRelationshipMapCommand}" />
         <MenuItem Header="_Plot Threads" Command="{Binding OpenPlotThreadsCommand}" />
+        <MenuItem Header="T_hread Chart" Command="{Binding OpenThreadChartCommand}" />
+        <Separator />
+        <MenuItem Header="Cork_board" Command="{Binding OpenCorkboardCommand}" />
+        <MenuItem Header="_Beat Sheet" Command="{Binding OpenBeatSheetCommand}" />
+        <Separator />
+        <MenuItem Header="_Writing Progress" Command="{Binding OpenWritingProgressCommand}" />
+        <MenuItem Header="Start or Stop Writing _Sprint" Command="{Binding ToggleSprintCommand}" InputGestureText="F9" />
       </MenuItem>
       <MenuItem Header="_Tools">
         <MenuItem Header="_Auto-complete Names While Typing" IsCheckable="True" IsChecked="{Binding AutoCompleteNames}" />
@@ -453,6 +461,24 @@
     <Border x:Name="StatusBarHost" DockPanel.Dock="Bottom" Background="{DynamicResource AccentBrush}" Padding="8,3">
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" TextElement.Foreground="White">
+          <TextBlock Margin="16,0,0,0" FontWeight="SemiBold" Text="{Binding SprintText}" ToolTip="Writing sprint (F9 stops it)"
+                     Visibility="{Binding IsSprinting, Converter={StaticResource BoolToVisibility}}" />
+          <StackPanel Margin="16,0,0,0" Orientation="Horizontal" Cursor="Hand" Background="Transparent" MouseLeftButtonUp="OnTodayClicked"
+                      ToolTip="Words written today against your daily goal. Click for Writing Progress."
+                      Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding TodayText}" />
+            <ProgressBar Width="60" Height="5" Margin="6,1,0,0" VerticalAlignment="Center" Maximum="100" Value="{Binding TodayPercent, Mode=OneWay}"
+                         AutomationProperties.Name="Today's words against the daily goal">
+              <ProgressBar.Template>
+                <ControlTemplate TargetType="ProgressBar">
+                  <Grid>
+                    <Border x:Name="PART_Track" Background="#55FFFFFF" CornerRadius="2" />
+                    <Border x:Name="PART_Indicator" Background="White" CornerRadius="2" HorizontalAlignment="Left" />
+                  </Grid>
+                </ControlTemplate>
+              </ProgressBar.Template>
+            </ProgressBar>
+          </StackPanel>
           <TextBlock Margin="16,0,0,0" Text="{Binding ActiveChapter.Statistics.Words, StringFormat='{}{0:N0} words in chapter', FallbackValue=''}" />
           <TextBlock Margin="16,0,0,0" Text="{Binding TotalWords, StringFormat='{}{0:N0} words total'}" Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}" />
           <TextBlock Margin="16,0,0,0" Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}">

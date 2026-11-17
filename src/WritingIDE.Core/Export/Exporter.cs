@@ -26,6 +26,30 @@ public static class Exporter {
         };
     }
 
+    /// <summary>
+    /// The file name an export is offered under, without the extension. One chapter reads "Series - Book - Chapter"
+    /// ("Novel - Chapter" in a novel), one whole book of a series "Series - Book", and anything else the project's name.
+    /// </summary>
+    public static string DefaultFileName(NovelProject project, IReadOnlyList<Chapter> chapters) {
+        List<string> parts = [project.Name];
+        if (chapters.Count == 1) {
+            if (project.FindBook(chapters[0].BookId) is Book book) {
+                parts.Add(book.Title);
+            }
+            parts.Add(chapters[0].Title);
+        }
+        else if (project.IsSeries && (chapters.Count > 0) && (project.FindBook(chapters[0].BookId) is Book book)
+            && chapters.All(chapter => chapter.BookId == book.Id) && (chapters.Count == project.GetChapters(book).Count())) {
+            parts.Add(book.Title);
+        }
+        char[] invalid = Path.GetInvalidFileNameChars();
+        IEnumerable<string> clean = parts
+            .Select(part => string.Join(" ", new string(part.Select(character => invalid.Contains(character) ? ' ' : character).ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries)).Trim('.', ' '))
+            .Where(static part => part.Length > 0);
+        string name = string.Join(" - ", clean);
+        return name.Length == 0 ? "Export" : name;
+    }
+
     /// <returns>Notes about the export, such as a font that could not be embedded; usually empty.</returns>
     public static IReadOnlyList<string> Export(string path, NovelProject project, ExportOptions options, Func<Chapter, string> getText) {
         List<string> warnings = [];

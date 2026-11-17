@@ -25,6 +25,9 @@ public sealed class AppSettings {
 
     public double EditorFontSize { get; set; } = 16;
 
+    /// <summary>How long a writing sprint lasts, in minutes.</summary>
+    public int SprintMinutes { get; set; } = 25;
+
     /// <summary>Added font files that could not be deleted while in use; deleted at the next start.</summary>
     public List<string> PendingFontDeletes { get; set; } = [];
 

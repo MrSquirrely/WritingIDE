@@ -25,6 +25,31 @@ public sealed class ProjectSerializerTests : IDisposable {
     }
 
     [Fact]
+    public void ExportFileNamesReadSeriesBookChapter() {
+        NovelProject series = new() { Name = "The Tide Cycle" };
+        Book one = series.ConvertToSeries("Salt: Book 1");
+        Book two = new("Ash");
+        series.Books.Add(two);
+        Chapter first = new("Chapter 1 - The Light?") { BookId = one.Id };
+        Chapter second = new("Chapter 2") { BookId = one.Id };
+        Chapter third = new("Chapter 1") { BookId = two.Id };
+        series.Chapters.Add(first);
+        series.Chapters.Add(second);
+        series.Chapters.Add(third);
+
+        Assert.Equal("The Tide Cycle - Salt Book 1 - Chapter 1 - The Light", Export.Exporter.DefaultFileName(series, [first]));
+        Assert.Equal("The Tide Cycle - Salt Book 1", Export.Exporter.DefaultFileName(series, [first, second]));
+        Assert.Equal("The Tide Cycle", Export.Exporter.DefaultFileName(series, [first, second, third]));
+        Assert.Equal("The Tide Cycle", Export.Exporter.DefaultFileName(series, [first, third]));
+
+        NovelProject novel = new() { Name = "Solo" };
+        Chapter only = new("Prologue");
+        novel.Chapters.Add(only);
+        novel.Chapters.Add(new Chapter("One"));
+        Assert.Equal("Solo - Prologue", Export.Exporter.DefaultFileName(novel, [only]));
+    }
+
+    [Fact]
     public void ExtensionDataRoundTripsAndIsLeftOutWhenEmpty() {
         NovelProject project = ProjectSerializer.Create(_directory, "Plain", "", ProjectTemplate.All[0]);
         Assert.DoesNotContain("ExtensionData", File.ReadAllText(project.FilePath), StringComparison.OrdinalIgnoreCase);

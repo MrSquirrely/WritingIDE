@@ -132,6 +132,7 @@ public sealed partial class MainViewModel : ObservableObject {
         Ai = new AiService(this);
         InitializeWritingTools();
         InitializeFormatting();
+        InitializeProgress();
 
         Log("WritingIDE ready.");
         if (Settings.Harper.Enabled) {
@@ -498,6 +499,7 @@ public sealed partial class MainViewModel : ObservableObject {
             if (chapter.FileName.Length > 0) {
                 Project.RemovedChapterFiles.Add(chapter.FileName);
             }
+            ResetProgressBaseline();
             Project.Chapters.Remove(chapter);
             _diagnostics.Remove(chapter.Id);
             _wordCounts.Remove(chapter.Id);
@@ -529,6 +531,7 @@ public sealed partial class MainViewModel : ObservableObject {
         if (chapter.FileName.Length > 0) {
             project.RemovedChapterFiles.Add(chapter.FileName);
         }
+        ResetProgressBaseline();
         project.Chapters.Remove(chapter);
         _diagnostics.Remove(chapter.Id);
         _wordCounts.Remove(chapter.Id);
@@ -882,6 +885,8 @@ public sealed partial class MainViewModel : ObservableObject {
         _mentionCounts.Clear();
         References.Clear();
         _grammarOptions = null;
+        _progressPaused = false;
+        ResetProgressBaseline();
         Project = project;
         foreach (string warning in project.LoadWarnings) {
             Log($"warning: {warning}");
@@ -1178,6 +1183,7 @@ public sealed partial class MainViewModel : ObservableObject {
         if (chapter.FileName.Length > 0) {
             Project.RemovedChapterFiles.Add(chapter.FileName);
         }
+        ResetProgressBaseline();
         Project.Chapters.Remove(chapter);
         _diagnostics.Remove(chapter.Id);
         _wordCounts.Remove(chapter.Id);
@@ -1541,6 +1547,7 @@ public sealed partial class MainViewModel : ObservableObject {
             ProgressPercent = 0;
             ProgressText = "";
             ElementSummary = "";
+            TrackProgress();
             return;
         }
         TotalWords = Project.Chapters.Sum(chapter => _wordCounts.TryGetValue(chapter.Id, out int words) ? words : TextStatistics.CountWords(chapter.Text));
@@ -1548,6 +1555,7 @@ public sealed partial class MainViewModel : ObservableObject {
         ProgressPercent = Math.Min(100, (100.0 * TotalWords) / target);
         ProgressText = $"{TotalWords:N0} of {Project.TargetWordCount:N0} words ({ProgressPercent:0.#}%)";
         ElementSummary = string.Join("   ", EntityKindInfo.All.Select(info => $"{info.PluralName}: {Project.GetEntities(info.Kind).Count()}"));
+        TrackProgress();
     }
 
     // =====================================================================
@@ -1594,6 +1602,7 @@ public sealed partial class MainViewModel : ObservableObject {
                 : null;
 
         Book? placeholderBook = project.FindBook(placeholder?.BookId);
+        _progressPaused = true;
         ImportSummary summary = ImportApplier.Apply(project, document, options, SetChapterText);
 
         if ((placeholder is not null) && (summary.ChaptersAdded > 0) && !summary.Chapters.Contains(placeholder)) {
@@ -1628,6 +1637,9 @@ public sealed partial class MainViewModel : ObservableObject {
         if (summary.Chapters.Count > 0) {
             OpenChapter(summary.Chapters[0]);
         }
+        // Imported words are not words written today.
+        _progressPaused = false;
+        ResetProgressBaseline();
         UpdateProjectStatistics();
         _ = AnalyzeAllAsync(quiet: true);
         return summary;

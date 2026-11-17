@@ -415,6 +415,10 @@ public partial class MainWindow : HandyControl.Controls.Window {
         _viewModel.Git.RequestRefresh();
     }
 
+    private void OnTodayClicked(object sender, MouseButtonEventArgs e) {
+        _viewModel.OpenWritingProgressCommand.Execute(null);
+    }
+
     private void OnReferenceDoubleClick(object sender, MouseButtonEventArgs e) {
         if (((DataGrid)sender).SelectedItem is ReferenceItem item) {
             _viewModel.NavigateToReferenceCommand.Execute(item);

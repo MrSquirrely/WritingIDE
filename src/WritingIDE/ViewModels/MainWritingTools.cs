@@ -327,7 +327,7 @@ public sealed partial class MainViewModel {
         string extensionName = extension?.FileExtension ?? Exporter.Extension(options.Format);
         SaveFileDialog save = new() {
             Title = "Export",
-            FileName = Project.Name + (options.Format == ExportFormat.AiContext ? " - AI context" : "") + extensionName,
+            FileName = (extension is null ? Exporter.DefaultFileName(Project, options.Chapters) : Project.Name) + (options.Format == ExportFormat.AiContext ? " - AI context" : "") + extensionName,
             InitialDirectory = Project.DirectoryPath,
             Filter = extension is null ? Exporter.FileFilter(options.Format) : $"{extension.Name} (*{extension.FileExtension})|*{extension.FileExtension}"
         };

@@ -39,8 +39,18 @@ public static class ProjectSerializer {
             Synopsis = dto.Synopsis,
             TargetWordCount = dto.TargetWordCount,
             Kind = dto.Kind,
-            Notes = dto.Notes
+            Notes = dto.Notes,
+            DailyWordGoal = dto.DailyWordGoal ?? 500,
+            Deadline = dto.Deadline
         };
+        project.WritingLog.AddRange((dto.WritingLog ?? []).OrderBy(static day => day.Date).Select(static day => new WritingDay(day.Date, day.Written, day.Total)));
+        if (dto.BeatSheet is BeatSheetDto sheetDto) {
+            BeatSheet sheet = new(sheetDto.Template);
+            foreach (BeatDto beat in sheetDto.Beats) {
+                sheet.Beats.Add(new Beat { Name = beat.Name, Description = beat.Description, ExpectedPercent = Math.Clamp(beat.Percent, 0, 100), ChapterId = beat.Chapter, Notes = beat.Notes });
+            }
+            project.BeatSheet = sheet;
+        }
         foreach (BookDto bookDto in dto.Books) {
             project.Books.Add(new Book(bookDto.Title) { Id = bookDto.Id, Synopsis = bookDto.Synopsis });
         }
@@ -159,7 +169,14 @@ public static class ProjectSerializer {
             TargetWordCount = project.TargetWordCount,
             Kind = project.Kind,
             Notes = project.Notes,
-            Books = project.Books.Select(static book => new BookDto { Id = book.Id, Title = book.Title, Synopsis = book.Synopsis }).ToList(),
+            DailyWordGoal = project.DailyWordGoal,
+            Deadline = project.Deadline,
+            WritingLog = project.WritingLog.Count == 0 ? null : project.WritingLog.Select(static day => new WritingDayDto { Date = day.Date, Written = day.Written, Total = day.Total }).ToList(),
+            BeatSheet = project.BeatSheet is null ? null : new BeatSheetDto {
+                Template = project.BeatSheet.Template,
+                Beats = project.BeatSheet.Beats.Select(static beat => new BeatDto { Name = beat.Name, Description = beat.Description, Percent = beat.ExpectedPercent, Chapter = beat.ChapterId, Notes = beat.Notes }).ToList()
+            },
+            Books =project.Books.Select(static book => new BookDto { Id = book.Id, Title = book.Title, Synopsis = book.Synopsis }).ToList(),
             Chapters = project.Chapters.Select(chapter => new ChapterDto {
                 Id = chapter.Id,
                 BookId = chapter.BookId,
@@ -312,6 +329,40 @@ public static class ProjectSerializer {
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, Dictionary<string, string>>? ExtensionData { get; set; }
+
+        /// <summary>Null in projects saved before daily goals existed.</summary>
+        public int? DailyWordGoal { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateOnly? Deadline { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<WritingDayDto>? WritingLog { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public BeatSheetDto? BeatSheet { get; set; }
+    }
+
+    internal sealed class WritingDayDto {
+        public DateOnly Date { get; set; }
+        public int Written { get; set; }
+        public int Total { get; set; }
+    }
+
+    internal sealed class BeatSheetDto {
+        public string Template { get; set; } = "";
+        public List<BeatDto> Beats { get; set; } = [];
+    }
+
+    internal sealed class BeatDto {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public double Percent { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? Chapter { get; set; }
+
+        public string Notes { get; set; } = "";
     }
 
     internal sealed class BookDto {

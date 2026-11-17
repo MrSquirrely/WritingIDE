@@ -130,6 +130,18 @@ It uses the Git for Windows command line, and Git Credential Manager handles sig
 - **Revision mode (track changes)**: under Revision mode in a chapter's Properties, choose "Start tracking changes", or press the track-changes button on a snapshot to compare against it. From then on, inserted text is shaded green and deleted text stays visible, struck through in red, without being part of the chapter. Right-click a change to accept it (the change is kept and stops being shown) or reject it (the old text comes back; Ctrl+Z works). Accept all, Reject all and Next are in Properties. The baseline is kept in `Revisions/` in the project folder, so tracking survives restarts.
 - **Plot threads and foreshadowing**: Analyze > Plot Threads lists every thread (a promise to the reader, such as "The compass points to where Tobias died"), with its status (open, resolved, abandoned). Select a passage in a chapter and right-click > Mark for Plot Thread > *thread* > Setup / Development / Payoff, or start a new thread from there. Marked passages get a purple dashed underline and a card in the margin. The tracker lists each thread's passages in reading order and warns about setups never paid off, payoffs with nothing set up, payoffs before their setup, threads marked resolved without a payoff, and abandoned threads with leftover passages.
 
+## Writing habit and progress
+
+- **Daily goal**: the status bar shows today's words against your goal ("Today 312 / 500") with a small bar; click it for the Writing Progress page. WritingIDE logs the words you add each day while the project is open. Cutting counts against the day, and importing or deleting a chapter does not count. The log is saved in the project file. Reaching the goal shows a notification, with your streak.
+- **Writing Progress** (Analyze menu): today, your streak (days in a row that met the goal) and best streak, the manuscript against its target, and the deadline. Set a deadline and it tells you how many words a day get you there, your average on the days you write, and when you will finish at your recent pace. Below is a heat map of the last 26 weeks, one square per day, darker for bigger days. Put the page in the second pane (Window > Split) to watch it while you write.
+- **Writing sprints**: F9 (Analyze > Start or Stop Writing Sprint) starts a timed burst of writing, 25 minutes unless you pick another length on the Writing Progress page. The status bar shows the clock and the words written so far; when the time is up you get a sound, a notification and the result.
+
+## Planning
+
+- **Corkboard** (Analyze menu): every chapter as an index card with its synopsis, status, words and point of view, grouped by book in a series. Drag a card by its coloured top edge to reorder chapters or move one to another book; type the synopsis on the card; change the status from the card.
+- **Beat Sheet** (Analyze menu): choose a structure (Three-Act Structure, Save the Cat, Hero's Journey, Story Circle or Seven-Point Structure), then place each beat in a chapter and note how your story hits it. Each beat has a track from 0% to 100%: a line where the structure expects the beat, a bar for the chapter you put it in. Beats that land more than 7.5 points early or late, or out of order, are pointed out. Positions are measured against the words written so far. The sheet is saved in the project file.
+- **Thread Chart** (Analyze menu): plot threads down the side, chapters across, with a dot wherever a thread has a marked passage (setup, development or payoff). A thread that goes quiet for three chapters or more between two of its passages is shaded, so you can see a subplot being forgotten.
+
 ## Navigation
 
 - **Outline** (the tab next to Properties, or View > Outline): the current chapter's scenes, bookmarks, TODOs, comments and plot-thread passages in order. Click one to go there.
@@ -149,6 +161,8 @@ File > Export (Ctrl+Shift+E) exports the whole manuscript, one book of a series,
 | Google Docs | A .docx that converts cleanly (chapters become the Google Docs outline). WritingIDE then shows the file in Explorer and opens Google Drive: choose New > File upload (or drag the file in), then open it with Google Docs. |
 | Markdown | `#` book and `##` chapter headings; Import reads it back. |
 | For an AI chat | One Markdown file with the story bible, every story element (attributes and relationships), plot threads, chapter synopses, story dates and POV, and optionally the full text, plus your instructions at the top. It is also copied to the clipboard, ready to paste into any AI chat. |
+
+The export is offered under a name that says what is in it: one chapter is `Series - Book - Chapter Name` (`Novel - Chapter Name` in a novel), one book of a series is `Series - Book`, and everything else the project's name.
 
 `*italic*`, `_italic_`, `**bold**` and `***bold italic***` in the manuscript become real italics and bold in DOCX, EPUB and PDF. Choose the **font** in the Export dialog (any installed font or one added to WritingIDE). PDF and EPUB embed it, unless its licence forbids embedding, in which case you get a note and the layout's own font; Word only names it. Extensions can add more formats.
 
@@ -208,7 +222,7 @@ public sealed class MyExtension : IWritingIdePlugin {
 }
 ```
 
-What the host offers (SDK 1.1):
+What the host offers (SDK 1.2):
 
 | Member | Does |
 |---|---|
@@ -218,10 +232,15 @@ What the host offers (SDK 1.1):
 | `Editor` (`IEditorApi`) | The active chapter, caret and selection; `ReplaceSelection` (undoable) and `Select` (opens a chapter and reveals a range) |
 | `Storage` (`IPluginStorage`) | `GetSetting`/`SetSetting`: per-user settings, kept with a `DataDirectory` for your own files in `%LocalAppData%\WritingIDE\ExtensionData\<id>`. `GetProjectValue`/`SetProjectValue`: values saved in the `.novproj`, so they travel with the project |
 | `ProjectOpened`, `ProjectClosed`, `ProjectSaved` | Project events |
+| `SprintFinished`, `DailyGoalReached` | A writing sprint ended (with its words and minutes); today's words reached the daily goal |
 | `ActiveChapterChanged`, `ChapterTextChanged`, `SelectionChanged` | Editor events, raised on the UI thread. The last two fire on every keystroke or caret move, so do the real work on a timer |
 | `Log`, `Notify`, `SetStatusText` | The Output window, a notification, the status bar |
 
-`IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements (summary, notes and attributes), comments, the Error List, and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command, a plain-text exporter, a "Writing Session" tool window that counts the words you write against a goal, and a right-click command that counts the words in the selection. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
+`IProjectApi` reads and edits the open project: chapters (text edits go through the editor, so the writer can undo them), story elements (summary, notes, attributes and relationships), comments, the Error List, `OpenEntity`, `Reanalyze` (check the open chapters again after a rule's settings change), the genre, the writing statistics (`GetWritingStats`: total and today's words, goal and streaks), and saving. Grammar rules derive from `WritingIDE.Core.Grammar.GrammarRule`, like the built-in ones. Build the extension, copy its DLL (and any dependencies it brings; not the SDK or Core) to `%LocalAppData%\WritingIDE\Extensions\<YourExtension>\`, and restart WritingIDE. `samples/SampleExtension` is a complete example: a rule flagging "very", a word-count command, a plain-text exporter, a "Writing Session" tool window that counts the words you write against a goal, and a right-click command that counts the words in the selection. Extensions run with WritingIDE's rights, so install only ones you trust, and switch any of them off in Tools > Extensions and API.
+
+### Plugins in their own repository
+
+[WritingIDE-Plugins](https://github.com/MrSquirrely/WritingIDE-Plugins) holds four extensions built on this SDK that go beyond what the main program does itself: **Ambient Soundscapes** (looping background sound that follows the place a chapter is set in), **Map Maker** (a map with a pin for each place, travel times, and a continuity rule for journeys that do not fit the map), **Gamification** (experience, levels and achievements) and **Genre Rule Packs** (rules and manuscript checks for romance, mystery, fantasy, science fiction and thrillers). Check it out next to this repository and run its `build\install.ps1`.
 
 ### Local REST API
 

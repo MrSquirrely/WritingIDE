@@ -45,7 +45,7 @@ public sealed class ExtensionInfo(string folder, string assemblyPath) {
 /// Extensions run with the same rights as WritingIDE: install only ones you trust.
 /// </summary>
 public sealed class ExtensionManager(MainViewModel shell) {
-    public static readonly Version SdkVersion = new(1, 1, 0);
+    public static readonly Version SdkVersion = new(1, 2, 0);
 
     public static string Root { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WritingIDE", "Extensions");
 
@@ -81,6 +81,18 @@ public sealed class ExtensionManager(MainViewModel shell) {
     public event EventHandler<ChapterEventArgs>? ChapterTextChanged;
 
     public event EventHandler<EditorSelectionEventArgs>? SelectionChanged;
+
+    public event EventHandler<SprintEventArgs>? SprintFinished;
+
+    public event EventHandler? DailyGoalReached;
+
+    public void RaiseSprintFinished(int words, double minutes, bool completed) {
+        Raise(SprintFinished, new SprintEventArgs(words, minutes, completed));
+    }
+
+    public void RaiseDailyGoalReached() {
+        Raise(DailyGoalReached);
+    }
 
     /// <summary>Called whenever the active tab changes; extensions only hear about it when the chapter is a different one.</summary>
     public void RaiseActiveChapterChanged(Guid? chapterId) {
@@ -329,6 +341,16 @@ public sealed class ExtensionManager(MainViewModel shell) {
         public event EventHandler<EditorSelectionEventArgs>? SelectionChanged {
             add => manager.SelectionChanged += value;
             remove => manager.SelectionChanged -= value;
+        }
+
+        public event EventHandler<SprintEventArgs>? SprintFinished {
+            add => manager.SprintFinished += value;
+            remove => manager.SprintFinished -= value;
+        }
+
+        public event EventHandler? DailyGoalReached {
+            add => manager.DailyGoalReached += value;
+            remove => manager.DailyGoalReached -= value;
         }
     }
 

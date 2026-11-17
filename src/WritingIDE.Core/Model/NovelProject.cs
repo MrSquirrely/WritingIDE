@@ -28,6 +28,25 @@ public sealed class NovelProject : ObservableObject {
 
     public int TargetWordCount { get; set => SetAndMarkDirty(ref field, value); } = 80000;
 
+    /// <summary>Words to write each day; 0 when no daily goal is set.</summary>
+    public int DailyWordGoal { get; set => SetAndMarkDirty(ref field, Math.Max(0, value)); } = 500;
+
+    /// <summary>The day the manuscript should reach <see cref="TargetWordCount"/>, if the writer set one.</summary>
+    public DateOnly? Deadline { get; set => SetAndMarkDirty(ref field, value); }
+
+    /// <summary>Words written per day, oldest first. Kept by WritingIDE as the manuscript grows.</summary>
+    public List<WritingDay> WritingLog { get; } = [];
+
+    /// <summary>The beat sheet, once the writer has started one.</summary>
+    public BeatSheet? BeatSheet {
+        get;
+        set {
+            if (SetProperty(ref field, value)) {
+                MarkDirty();
+            }
+        }
+    }
+
     public ProjectKind Kind {
         get;
         set {
@@ -98,6 +117,36 @@ public sealed class NovelProject : ObservableObject {
     public string GetDisplayName(Chapter chapter) {
         Book? book = FindBook(chapter.BookId);
         return book is null ? chapter.Title : $"{book.Title} \u203A {chapter.Title}";
+    }
+
+    /// <summary>
+    /// Moves a chapter next to another one (before it, or after it), into that chapter's book. This is what dragging a
+    /// card on the corkboard does.
+    /// </summary>
+    public void MoveChapter(Chapter chapter, Chapter target, bool after) {
+        if (ReferenceEquals(chapter, target) || !Chapters.Contains(chapter) || !Chapters.Contains(target)) {
+            return;
+        }
+        chapter.BookId = target.BookId;
+        int from = Chapters.IndexOf(chapter);
+        int to = Chapters.IndexOf(target) + (after ? 1 : 0);
+        if (from < to) {
+            to--;
+        }
+        if (from != to) {
+            Chapters.Move(from, to);
+        }
+    }
+
+    /// <summary>Moves a chapter to the end of a book (or of a novel's manuscript when <paramref name="book"/> is null).</summary>
+    public void MoveChapterToEnd(Chapter chapter, Book? book) {
+        Chapter? last = GetChapters(book).LastOrDefault(candidate => !ReferenceEquals(candidate, chapter));
+        if (last is not null) {
+            MoveChapter(chapter, last, after: true);
+        }
+        else {
+            chapter.BookId = book?.Id;
+        }
     }
 
     /// <summary>Turns a single novel into a series whose first book holds every existing chapter.</summary>
