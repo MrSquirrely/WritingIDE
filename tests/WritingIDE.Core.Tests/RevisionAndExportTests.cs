@@ -214,6 +214,31 @@ public sealed class ExportTests : IDisposable {
     }
 
     [Fact]
+    public void WritesLuluInteriorAtTrimSizePlusBleed() {
+        (NovelProject project, ExportOptions options) = Sample(ExportFormat.Lulu);
+        string path = Path.Combine(_directory, "lulu.pdf");
+        TrimSize digest = TrimSize.Lulu.Single(static size => size.Name == "Digest");
+        IReadOnlyList<string> notes = Exporter.Export(path, project, options with { TrimSize = digest }, static chapter => chapter.Text);
+
+        using PdfSharp.Pdf.PdfDocument pdf = PdfSharp.Pdf.IO.PdfReader.Open(path, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        // Title page, copyright page, then one page per chapter.
+        Assert.Equal(4, pdf.PageCount);
+        Assert.All(pdf.Pages.Cast<PdfSharp.Pdf.PdfPage>(), static page => {
+            Assert.Equal((5.5 + 0.25) * 72, page.Width.Point, 3);
+            Assert.Equal((8.5 + 0.25) * 72, page.Height.Point, 3);
+        });
+        Assert.Contains(notes, static note => note.Contains("4 pages at Digest (5.5 x 8.5 in)", StringComparison.Ordinal));
+        Assert.Contains(notes, static note => note.Contains("at least 32 pages", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LuluGutterGrowsWithThePageCount() {
+        Assert.Equal(0, PdfExporter.LuluGutter(150));
+        Assert.True(PdfExporter.LuluGutter(151) > 0);
+        Assert.True(PdfExporter.LuluGutter(700) > PdfExporter.LuluGutter(300));
+    }
+
+    [Fact]
     public void AiContextIncludesBibleElementsAndText() {
         (NovelProject project, ExportOptions options) = Sample(ExportFormat.AiContext);
         project.Notes = "Magic costs memories.";

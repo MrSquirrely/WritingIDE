@@ -10,7 +10,30 @@ public enum ExportFormat {
     Epub,
     Pdf,
     GoogleDocs,
-    AiContext
+    AiContext,
+    Lulu
+}
+
+/// <summary>The size of a printed book's pages after trimming, in inches.</summary>
+public sealed record TrimSize(string Name, double WidthInches, double HeightInches) {
+    public static TrimSize UsTrade { get; } = new("US Trade", 6, 9);
+
+    /// <summary>The paperback sizes Lulu prints novels in.</summary>
+    public static IReadOnlyList<TrimSize> Lulu { get; } = [
+        new("Pocket Book", 4.25, 6.875),
+        new("Novella", 5, 8),
+        new("Digest", 5.5, 8.5),
+        new("A5", 5.83, 8.27),
+        UsTrade,
+        new("Royal", 6.14, 9.21),
+        new("US Letter", 8.5, 11)
+    ];
+
+    public string Label => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} ({WidthInches:0.###} x {HeightInches:0.###} in)");
+
+    public override string ToString() {
+        return Label;
+    }
 }
 
 /// <summary>Standard manuscript format (for agents and editors) or a typeset book.</summary>
@@ -43,6 +66,9 @@ public sealed record ExportOptions {
 
     /// <summary>The body font for Word, PDF and EPUB; null or empty uses the style's own (Times New Roman or Georgia).</summary>
     public string? FontFamily { get; init; }
+
+    /// <summary>Lulu export: the book's trim size.</summary>
+    public TrimSize TrimSize { get; init; } = TrimSize.UsTrade;
 
     /// <summary>The font the export uses: <see cref="FontFamily"/>, or the style's default.</summary>
     public string EffectiveFontFamily => string.IsNullOrWhiteSpace(FontFamily) ? DefaultFontFamily(Style) : FontFamily.Trim();

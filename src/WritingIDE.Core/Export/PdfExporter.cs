@@ -25,6 +25,18 @@ public static class PdfExporter {
         public required double Indent { get; init; }
         public required bool Justify { get; init; }
         public required bool Manuscript { get; init; }
+
+        /// <summary>Distance from the bottom of the page to the last line of text.</summary>
+        public required double BottomMargin { get; init; }
+
+        /// <summary>Where the page number at the foot of a book page sits.</summary>
+        public double FooterY { get; init; }
+
+        /// <summary>Extra margin on the binding side: the left of odd (right-hand) pages, the right of even ones.</summary>
+        public double Gutter { get; init; }
+
+        /// <summary>A print interior: a copyright page follows the title page, and books of a series open on a right-hand page.</summary>
+        public bool Print { get; init; }
     }
 
     public static void Write(string path, ManuscriptDocument document, ExportOptions options) {
@@ -33,6 +45,79 @@ public static class PdfExporter {
 
     /// <param name="warnings">Receives a note when the chosen font cannot be used and the style's font is used instead.</param>
     public static void Write(string path, ManuscriptDocument document, ExportOptions options, List<string> warnings) {
+        ConfigureFonts();
+        bool manuscript = options.Style == ExportStyle.Manuscript;
+        string font = ChooseFont(options, warnings);
+        Layout layout = manuscript
+            ? new Layout { Width = 612, Height = 792, Margin = 72, BottomMargin = 72, FontName = font, FontSize = 12, LineHeight = 28.8, Indent = 36, Justify = false, Manuscript = true }
+            : new Layout { Width = 432, Height = 648, Margin = 54, BottomMargin = 54, FooterY = 621, FontName = font, FontSize = 10.5, LineHeight = 15, Indent = 18, Justify = true, Manuscript = false };
+        using PdfDocument pdf = Render(document, options, layout);
+        pdf.Save(path);
+    }
+
+    /// <summary>Lulu's smallest and largest perfect-bound paperback, in pages.</summary>
+    public const int LuluMinimumPages = 32;
+
+    public const int LuluMaximumPages = 800;
+
+    private const double Bleed = 9;
+
+    /// <summary>
+    /// A print-ready interior for Lulu: single pages at the trim size plus 0.125 in bleed on every edge, all text inside
+    /// the 0.5 in safety margin, mirrored margins with a gutter that grows with the page count, fonts embedded, and the
+    /// first page a right-hand page (title page, copyright page, then the chapters).
+    /// </summary>
+    /// <param name="warnings">Receives font notes, the page count (the cover's spine depends on it) and page count problems.</param>
+    /// <returns>The number of pages written.</returns>
+    public static int WriteLulu(string path, ManuscriptDocument document, ExportOptions options, List<string> warnings) {
+        ConfigureFonts();
+        string font = ChooseFont(options, warnings);
+        // The gutter depends on the page count, which depends on the gutter: lay out once to count, then for real.
+        PdfDocument pdf = Render(document, options, LuluLayout(options.TrimSize, font, 0));
+        try {
+            double gutter = LuluGutter(pdf.PageCount);
+            if (gutter > 0) {
+                pdf.Dispose();
+                pdf = Render(document, options, LuluLayout(options.TrimSize, font, gutter));
+            }
+            int pages = pdf.PageCount;
+            pdf.Save(path);
+            warnings.Add($"The interior is {pages.ToString("N0", CultureInfo.InvariantCulture)} pages at {options.TrimSize.Label}. Give Lulu the same size and page count when you make the cover.");
+            if (pages < LuluMinimumPages) {
+                warnings.Add($"Lulu's paperbacks need at least {LuluMinimumPages} pages; this interior has {pages}.");
+            }
+            else if (pages > LuluMaximumPages) {
+                warnings.Add($"Lulu's paperbacks hold at most {LuluMaximumPages} pages; this interior has {pages.ToString("N0", CultureInfo.InvariantCulture)}. Try a larger trim size, or split the book.");
+            }
+            return pages;
+        }
+        finally {
+            pdf.Dispose();
+        }
+    }
+
+    /// <summary>How much wider than the outside margin the binding-side margin is, in points, for a book of this many pages.</summary>
+    public static double LuluGutter(int pages) {
+        return pages switch {
+            <= 150 => 0,
+            <= 400 => 18,
+            <= 600 => 27,
+            _ => 36
+        };
+    }
+
+    private static Layout LuluLayout(TrimSize trim, string font, double gutter) {
+        double width = (trim.WidthInches * 72) + (2 * Bleed);
+        double height = (trim.HeightInches * 72) + (2 * Bleed);
+        // 0.75 in margins (0.625 in on the narrow sizes), measured from the trim edge.
+        double margin = Bleed + (trim.WidthInches < 5.5 ? 45 : 54);
+        return new Layout {
+            Width = width, Height = height, Margin = margin, BottomMargin = Bleed + 68, FooterY = height - Bleed - 40, Gutter = gutter,
+            FontName = font, FontSize = 10.5, LineHeight = 15, Indent = 18, Justify = true, Manuscript = false, Print = true
+        };
+    }
+
+    private static void ConfigureFonts() {
         lock (FontLock) {
             // PDFsharp allows this to be set once, and reading it first counts: so set it once, without reading.
             if (!_fontsConfigured) {
@@ -45,18 +130,18 @@ public static class PdfExporter {
                 }
             }
         }
-        bool manuscript = options.Style == ExportStyle.Manuscript;
-        string font = ChooseFont(options, warnings);
-        Layout layout = manuscript
-            ? new Layout { Width = 612, Height = 792, Margin = 72, FontName = font, FontSize = 12, LineHeight = 28.8, Indent = 36, Justify = false, Manuscript = true }
-            : new Layout { Width = 432, Height = 648, Margin = 54, FontName = font, FontSize = 10.5, LineHeight = 15, Indent = 18, Justify = true, Manuscript = false };
+    }
 
-        using PdfDocument pdf = new();
+    private static PdfDocument Render(ManuscriptDocument document, ExportOptions options, Layout layout) {
+        PdfDocument pdf = new();
         pdf.Info.Title = document.Title;
         pdf.Info.Author = document.Author;
         Writer writer = new(pdf, layout, document);
         if (options.IncludeTitlePage) {
             writer.TitlePage(options);
+            if (layout.Print) {
+                writer.CopyrightPage();
+            }
         }
         foreach (ExportBook book in document.Books) {
             if (book.Title is not null) {
@@ -67,7 +152,7 @@ public static class PdfExporter {
             }
         }
         writer.Finish();
-        pdf.Save(path);
+        return pdf;
     }
 
     /// <summary>The chosen font when a PDF can embed it, otherwise the style's font (with a warning saying why).</summary>
@@ -113,9 +198,12 @@ public static class PdfExporter {
         private readonly XFont _boldItalic = new(layout.FontName, layout.FontSize, XFontStyleEx.BoldItalic);
         private readonly XFont _small = new(layout.FontName, layout.Manuscript ? 12 : 8.5, XFontStyleEx.Regular);
 
-        private double Bottom => layout.Height - layout.Margin;
+        private double Bottom => layout.Height - layout.BottomMargin;
 
-        private double TextWidth => layout.Width - (2 * layout.Margin);
+        private double TextWidth => layout.Width - (2 * layout.Margin) - layout.Gutter;
+
+        /// <summary>The left edge of the text: odd pages are right-hand pages, bound on their left.</summary>
+        private double Left => layout.Margin + ((_pageNumber % 2) == 1 ? layout.Gutter : 0);
 
         public void TitlePage(ExportOptions options) {
             NewPage(numbered: false);
@@ -123,11 +211,11 @@ public static class PdfExporter {
                 string[] contact = (options.Contact.Trim().Length > 0 ? options.Contact : document.Author).Replace("\r", "").Split('\n');
                 double y = layout.Margin;
                 foreach (string line in contact) {
-                    _graphics!.DrawString(line.Trim(), _regular, XBrushes.Black, new XPoint(layout.Margin, y + layout.FontSize));
+                    _graphics!.DrawString(line.Trim(), _regular, XBrushes.Black, new XPoint(Left, y + layout.FontSize));
                     y += layout.FontSize * 1.2;
                 }
                 string words = $"About {document.RoundedWords.ToString("N0", CultureInfo.InvariantCulture)} words";
-                _graphics!.DrawString(words, _regular, XBrushes.Black, new XPoint(layout.Width - layout.Margin - _graphics.MeasureString(words, _regular).Width, layout.Margin + layout.FontSize));
+                _graphics!.DrawString(words, _regular, XBrushes.Black, new XPoint(Left + TextWidth - _graphics.MeasureString(words, _regular).Width,layout.Margin + layout.FontSize));
                 Centered(document.Title.ToUpperInvariant(), _regular, layout.Height / 2);
                 Centered($"by {document.Author}", _regular, (layout.Height / 2) + layout.LineHeight);
             }
@@ -138,7 +226,19 @@ public static class PdfExporter {
             }
         }
 
+        /// <summary>The back of the title page.</summary>
+        public void CopyrightPage() {
+            NewPage(numbered: false);
+            string owner = document.Author.Trim();
+            Centered($"Copyright © {DateTime.Now.Year.ToString(CultureInfo.InvariantCulture)}{(owner.Length > 0 ? " " + owner : "")}", _small, layout.Height * 0.7);
+            Centered("All rights reserved.", _small, (layout.Height * 0.7) + layout.LineHeight);
+        }
+
         public void BookPage(string title) {
+            if (layout.Print && ((_pageNumber % 2) == 1)) {
+                // The next page would be a left-hand one: leave it blank so the book opens on the right.
+                NewPage(numbered: false);
+            }
             NewPage(numbered: true);
             Centered(title, new XFont(layout.FontName, layout.Manuscript ? 14 : 20, XFontStyleEx.Bold), layout.Height * 0.35);
         }
@@ -215,7 +315,7 @@ public static class PdfExporter {
                 bool last = index >= words.Count;
                 int gaps = line.Skip(1).Count(static entry => entry.SpaceBefore);
                 double extra = layout.Justify && !last && (gaps > 0) ? (available - used) / gaps : 0;
-                double x = layout.Margin + (firstLine && indent ? layout.Indent : 0);
+                double x = Left + (firstLine && indent ? layout.Indent : 0);
                 double baseline = _y + layout.FontSize;
                 for (int i = 0; i < line.Count; i++) {
                     if ((i > 0) && line[i].SpaceBefore) {
@@ -231,7 +331,7 @@ public static class PdfExporter {
 
         private void Centered(string text, XFont font, double y) {
             double width = _graphics!.MeasureString(text, font).Width;
-            _graphics.DrawString(text, font, XBrushes.Black, new XPoint((layout.Width - width) / 2, y + font.Size));
+            _graphics.DrawString(text, font, XBrushes.Black, new XPoint(Left + ((TextWidth - width) / 2), y + font.Size));
         }
 
         private void EnsureSpace(double height) {
@@ -254,12 +354,12 @@ public static class PdfExporter {
             if (layout.Manuscript) {
                 string header = $"{document.Surname} / {string.Join(' ', document.Title.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(3)).ToUpperInvariant()} / {_pageNumber}";
                 double width = _graphics.MeasureString(header, _small).Width;
-                _graphics.DrawString(header, _small, XBrushes.Black, new XPoint(layout.Width - layout.Margin - width, layout.Margin / 2 + 6));
+                _graphics.DrawString(header, _small, XBrushes.Black, new XPoint(Left + TextWidth - width, layout.Margin / 2 + 6));
             }
             else {
                 string number = _pageNumber.ToString(CultureInfo.InvariantCulture);
                 double width = _graphics.MeasureString(number, _small).Width;
-                _graphics.DrawString(number, _small, XBrushes.Black, new XPoint((layout.Width - width) / 2, layout.Height - (layout.Margin / 2)));
+                _graphics.DrawString(number, _small, XBrushes.Black, new XPoint(Left + ((TextWidth - width) / 2), layout.FooterY));
             }
         }
     }
