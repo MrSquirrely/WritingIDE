@@ -158,13 +158,13 @@ public sealed partial class MainViewModel {
         return total;
     }
 
-    /// <summary>Corkboard: drops a chapter before or after another one, in that chapter's book.</summary>
+    /// <summary>Corkboard and Solution Explorer: drops a chapter before or after another one, in that chapter's book.</summary>
     public void MoveChapterNextTo(Chapter chapter, Chapter target, bool after) {
         Project?.MoveChapter(chapter, target, after);
         RefreshErrorList();
     }
 
-    /// <summary>Corkboard: drops a chapter at the end of a book (or of a novel's manuscript).</summary>
+    /// <summary>Corkboard and Solution Explorer: drops a chapter at the end of a book (or of a novel's manuscript).</summary>
     public void MoveChapterToEnd(Chapter chapter, Book? book) {
         Project?.MoveChapterToEnd(chapter, book);
         RefreshErrorList();

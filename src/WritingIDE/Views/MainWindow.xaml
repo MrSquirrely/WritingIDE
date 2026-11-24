@@ -523,7 +523,9 @@
                       Visibility="{Binding HasProject, Converter={StaticResource BoolToVisibility}}" />
         <Grid>
           <TreeView x:Name="SolutionTree" ItemsSource="{Binding SolutionItems}" BorderThickness="0" Background="{DynamicResource SurfaceBrush}" Padding="2,4"
-                    MouseDoubleClick="OnTreeDoubleClick" KeyDown="OnTreeKeyDown"
+                    MouseDoubleClick="OnTreeDoubleClick" KeyDown="OnTreeKeyDown" AllowDrop="True"
+                    PreviewMouseLeftButtonDown="OnTreePreviewLeftButtonDown" PreviewMouseMove="OnTreePreviewMouseMove"
+                    DragOver="OnTreeDragOver" DragLeave="OnTreeDragLeave" Drop="OnTreeDrop"
                     PreviewMouseRightButtonDown="OnTreePreviewRightButtonDown" ContextMenuOpening="OnTreeContextMenuOpening">
             <TreeView.ContextMenu>
               <ContextMenu />

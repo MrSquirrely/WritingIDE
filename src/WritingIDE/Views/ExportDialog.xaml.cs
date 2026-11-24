@@ -10,7 +10,7 @@ using WritingIDE.ViewModels;
 
 namespace WritingIDE.Views;
 
-/// <summary>File > Export: DOCX, EPUB, PDF, Google Docs, Markdown, AI context, and formats added by extensions.</summary>
+/// <summary>File > Export: DOCX, EPUB, PDF, Lulu print interior, Google Docs, Markdown, AI context, and formats added by extensions.</summary>
 public partial class ExportDialog : HandyControl.Controls.Window {
     private readonly MainViewModel _shell;
 
@@ -33,6 +33,8 @@ public partial class ExportDialog : HandyControl.Controls.Window {
                 "An EPUB 3 e-book with a table of contents. Send it to Kindle, open it in Apple Books, or check it with an e-book previewer.", ExportFormat.Epub),
             new("\uEA90", "PDF", "To print or share.",
                 "A PDF laid out as a manuscript (US Letter) or a 6 x 9 in book.", ExportFormat.Pdf),
+            new("\uE82D", "Lulu (print)", "A print-ready interior for a Lulu paperback.",
+                "A PDF made to Lulu's interior rules: single pages at your trim size plus 0.125 in bleed, text inside the safety margin, a wider margin on the binding side, embedded fonts, and a title and copyright page so chapter one opens on the right. Upload it as the interior file; the export tells you the page count Lulu needs for the cover.", ExportFormat.Lulu),
             new("\uE753", "Google Docs", "Opens Google Drive to upload.",
                 "Exports a .docx that converts cleanly in Google Docs (chapters become its outline). WritingIDE then shows the file and opens Google Drive: choose New > File upload (or drag the file in), then open it with Google Docs.", ExportFormat.GoogleDocs),
             new("\uE943", "Markdown", "Plain text with # headings.",
@@ -62,6 +64,8 @@ public partial class ExportDialog : HandyControl.Controls.Window {
         fonts.AddRange(FontLibrary.Choices.Select(static choice => new FontOption(choice.IsAdded ? $"{choice.Name}  (added)" : choice.Name, choice.Name, choice.Family)));
         FontBox.ItemsSource = fonts;
         FontBox.SelectedIndex = 0;
+        TrimBox.ItemsSource = TrimSize.Lulu;
+        TrimBox.SelectedItem = TrimSize.UsTrade;
         FormatList.SelectedIndex = 0;
     }
 
@@ -82,10 +86,15 @@ public partial class ExportDialog : HandyControl.Controls.Window {
         FormatHelp.Text = choice.Help;
         bool book = choice.Extension is null && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf);
         StylePanel.Visibility = book ? Visibility.Visible : Visibility.Collapsed;
-        TitlePanel.Visibility = choice.Extension is null && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs) ? Visibility.Visible : Visibility.Collapsed;
+        bool lulu = (choice.Extension is null) && (choice.Format == ExportFormat.Lulu);
+        TrimPanel.Visibility = lulu ? Visibility.Visible : Visibility.Collapsed;
+        TitlePanel.Visibility = choice.Extension is null && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs or ExportFormat.Lulu) ? Visibility.Visible : Visibility.Collapsed;
+        TitlePageBox.Content = lulu ? "Include a title page and a copyright page" : "Include a title page";
+        ContactPanel.Visibility = lulu ? Visibility.Collapsed : Visibility.Visible;
         AiPanel.Visibility = (choice.Extension is null) && (choice.Format == ExportFormat.AiContext) ? Visibility.Visible : Visibility.Collapsed;
-        FontPanel.Visibility = (choice.Extension is null) && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs) ? Visibility.Visible : Visibility.Collapsed;
+        FontPanel.Visibility = (choice.Extension is null) && (choice.Format is ExportFormat.Docx or ExportFormat.Pdf or ExportFormat.Epub or ExportFormat.GoogleDocs or ExportFormat.Lulu) ? Visibility.Visible : Visibility.Collapsed;
         FontHelp.Text = choice.Format switch {
+            ExportFormat.Lulu => "Lulu needs every font embedded, so a font whose licence forbids embedding is replaced with Georgia.",
             ExportFormat.Pdf => "The PDF embeds the font, so it looks the same everywhere (unless the font's licence forbids embedding).",
             ExportFormat.Epub => "The e-book embeds the font when its licence allows; otherwise readers use their own font.",
             _ => "Word names the font; it shows on PCs where that font is installed."
@@ -107,7 +116,8 @@ public partial class ExportDialog : HandyControl.Controls.Window {
             Contact = ContactBox.Text,
             IncludeFullText = FullTextBox.IsChecked == true,
             AiInstructions = InstructionsBox.Text,
-            FontFamily = (FontBox.SelectedItem as FontOption)?.Family
+            FontFamily = (FontBox.SelectedItem as FontOption)?.Family,
+            TrimSize = (TrimBox.SelectedItem as TrimSize) ?? TrimSize.UsTrade
         };
         if (_shell.Export(options, choice.Extension) is not null) {
             DialogResult = true;

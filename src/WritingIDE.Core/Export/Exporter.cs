@@ -11,7 +11,7 @@ public static class Exporter {
         return format switch {
             ExportFormat.Docx or ExportFormat.GoogleDocs => ".docx",
             ExportFormat.Epub => ".epub",
-            ExportFormat.Pdf => ".pdf",
+            ExportFormat.Pdf or ExportFormat.Lulu => ".pdf",
             _ => ".md"
         };
     }
@@ -20,7 +20,7 @@ public static class Exporter {
         return format switch {
             ExportFormat.Docx or ExportFormat.GoogleDocs => "Word document (*.docx)|*.docx",
             ExportFormat.Epub => "EPUB e-book (*.epub)|*.epub",
-            ExportFormat.Pdf => "PDF (*.pdf)|*.pdf",
+            ExportFormat.Pdf or ExportFormat.Lulu => "PDF (*.pdf)|*.pdf",
             ExportFormat.AiContext => "Markdown (*.md)|*.md|Plain text (*.txt)|*.txt",
             _ => "Markdown (*.md)|*.md|Plain text (*.txt)|*.txt"
         };
@@ -77,6 +77,10 @@ public static class Exporter {
                 break;
             case ExportFormat.Pdf:
                 PdfExporter.Write(path, document, options, warnings);
+                break;
+            case ExportFormat.Lulu:
+                // A print interior is always typeset as a book.
+                PdfExporter.WriteLulu(path, document, options with { Style = ExportStyle.Book }, warnings);
                 break;
         }
         return warnings;

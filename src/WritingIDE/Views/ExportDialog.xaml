@@ -44,6 +44,12 @@
             <TextBlock Text="Georgia, justified text, page numbers, * * * between scenes." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Margin="20,0,0,4" />
           </StackPanel>
 
+          <StackPanel x:Name="TrimPanel">
+            <TextBlock Style="{StaticResource FormLabel}" Text="Book size" />
+            <ComboBox x:Name="TrimBox" DisplayMemberPath="Label" AutomationProperties.Name="Book size" />
+            <TextBlock Text="Choose the same size when you create the book on Lulu. The PDF's pages are 0.25 in wider and taller than this: that is the bleed Lulu trims off." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" Margin="0,3,0,0" />
+          </StackPanel>
+
           <StackPanel x:Name="FontPanel">
             <TextBlock Style="{StaticResource FormLabel}" Text="Font" />
             <ComboBox x:Name="FontBox" AutomationProperties.Name="Export font" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
@@ -63,9 +69,11 @@
 
           <StackPanel x:Name="TitlePanel">
             <CheckBox x:Name="TitlePageBox" Content="Include a title page" IsChecked="True" Margin="0,10,0,0" />
-            <TextBlock Style="{StaticResource FormLabel}" Text="Contact details for the title page (manuscript format)" />
-            <TextBox x:Name="ContactBox" Style="{StaticResource FormTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalContentAlignment="Top"
-                     hc:InfoElement.Placeholder="Your name&#x0a;Address or email&#x0a;Phone" AutomationProperties.Name="Contact details" />
+            <StackPanel x:Name="ContactPanel">
+              <TextBlock Style="{StaticResource FormLabel}" Text="Contact details for the title page (manuscript format)" />
+              <TextBox x:Name="ContactBox" Style="{StaticResource FormTextBox}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" VerticalContentAlignment="Top"
+                       hc:InfoElement.Placeholder="Your name&#x0a;Address or email&#x0a;Phone" AutomationProperties.Name="Contact details" />
+            </StackPanel>
           </StackPanel>
 
           <StackPanel x:Name="AiPanel">
